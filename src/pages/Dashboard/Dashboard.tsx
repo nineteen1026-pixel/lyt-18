@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Package, ShoppingBag, Tag, TrendingUp, Clock, DollarSign, Search } from 'lucide-react';
+import { Package, ShoppingBag, Tag, TrendingUp, Clock, DollarSign, Search, Wallet, Percent } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import ItemCard from '../../components/ItemCard/ItemCard';
 import StatCard from '../../components/StatCard/StatCard';
 import { CATEGORIES } from '../../../shared/types';
+import { formatProfit, getProfitColor } from '../../utils/format';
 
 export default function Dashboard() {
   const { items, stats, loading, fetchAll } = useStore();
@@ -70,13 +71,47 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="累计收益"
-          value={stats.summary?.netProfit || 0}
+          title="总买入成本"
+          value={stats.summary?.totalExpense || 0}
           icon={DollarSign}
           isCurrency
+          color="text-primary-600"
+          subtitle="所有物品买入价合计"
+        />
+        <StatCard
+          title="总附加成本"
+          value={stats.summary?.totalCosts || 0}
+          icon={Wallet}
+          isCurrency
+          color="text-rose-600"
+          subtitle="运费/维修/配件等"
+        />
+        <StatCard
+          title="净利润（已售）"
+          value={stats.summary?.netProfit || 0}
+          icon={TrendingUp}
+          isCurrency
           color={stats.summary && stats.summary.netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}
+          subtitle="扣除综合成本后的真实收益"
+        />
+        <StatCard
+          title="平均毛利率"
+          value={`${stats.summary?.avgGrossMargin || 0}%`}
+          icon={Percent}
+          color={getProfitColor(stats.summary?.avgGrossMargin || 0)}
+          subtitle="基于已成交物品"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard
+          title="整体回本率"
+          value={`${stats.summary?.returnRate || 0}%`}
+          icon={TrendingUp}
+          color={stats.summary && stats.summary.returnRate >= 100 ? 'text-emerald-600' : 'text-primary-600'}
+          subtitle="基于综合成本计算"
         />
         <StatCard
           title="平均回本周期"
@@ -85,10 +120,10 @@ export default function Dashboard() {
           color="text-slate-700"
         />
         <StatCard
-          title="整体回本率"
-          value={`${stats.summary?.returnRate || 0}%`}
-          icon={TrendingUp}
-          color={stats.summary && stats.summary.returnRate >= 100 ? 'text-emerald-600' : 'text-primary-600'}
+          title="已成交物品"
+          value={stats.summary?.soldItems || 0}
+          icon={Package}
+          color="text-emerald-600"
         />
       </div>
 

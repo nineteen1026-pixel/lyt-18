@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, Search, Eye } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Eye, Wallet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { api } from '../../utils/api';
@@ -147,7 +147,7 @@ export default function Items() {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">物品</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">分类</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">买入价</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">综合成本</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">持有时长</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">状态</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">操作</th>
@@ -168,7 +168,15 @@ export default function Items() {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{item.category}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary-600">{formatCurrency(item.buyPrice)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="font-medium text-primary-600">{formatCurrency(item.totalCost)}</div>
+                    {item.totalCosts > 0 && (
+                      <div className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                        <Wallet className="w-3 h-3" />
+                        含附加 {formatCurrency(item.totalCosts)}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{formatDays(item.holdingDays)}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`status-badge ${STATUS_COLORS[item.status]}`}>

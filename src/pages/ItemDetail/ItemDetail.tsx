@@ -710,6 +710,48 @@ export default function ItemDetail() {
               placeholder="交易过程中的特殊情况..."
             />
           </div>
+          {item && saleForm.salePrice && (
+            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+              <p className="text-sm font-medium text-slate-700 mb-3">收益预览</p>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">成交价</span>
+                  <span className="font-medium text-slate-700">{formatCurrency(Number(saleForm.salePrice))}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">成交运费</span>
+                  <span className="text-slate-600">- {formatCurrency(saleForm.shippingFee ? Number(saleForm.shippingFee) : 0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">净收入</span>
+                  <span className="font-medium text-emerald-600">
+                    {formatCurrency(Number(saleForm.salePrice) - (saleForm.shippingFee ? Number(saleForm.shippingFee) : 0))}
+                  </span>
+                </div>
+                <div className="border-t border-slate-200 my-2"></div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">综合成本</span>
+                  <span className="text-slate-600">{formatCurrency(item.totalCost)}</span>
+                  <span className="text-xs text-slate-400">买入+附加</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">净利润</span>
+                  <span className={`font-bold ${getProfitColor((Number(saleForm.salePrice) - (saleForm.shippingFee ? Number(saleForm.shippingFee) : 0)) - item.totalCost)}`}>
+                    {formatProfit((Number(saleForm.salePrice) - (saleForm.shippingFee ? Number(saleForm.shippingFee) : 0)) - item.totalCost)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">毛利率</span>
+                  <span className={`font-bold ${getProfitColor(Number(saleForm.salePrice) > 0 ? ((Number(saleForm.salePrice) - (saleForm.shippingFee ? Number(saleForm.shippingFee) : 0) - item.totalCost) / Number(saleForm.salePrice)) * 100 : 0)}`}>
+                    {Number(saleForm.salePrice) > 0
+                      ? `${((Number(saleForm.salePrice) - (saleForm.shippingFee ? Number(saleForm.shippingFee) : 0) - item.totalCost) / Number(saleForm.salePrice) * 100).toFixed(1)}%`
+                      : '0%'
+                    }
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={() => setSaleModalOpen(false)} className="btn-secondary flex-1">
               取消

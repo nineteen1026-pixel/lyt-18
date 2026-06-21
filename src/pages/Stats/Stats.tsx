@@ -77,11 +77,12 @@ export default function Stats() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="总支出（买入）"
+          title="总买入成本"
           value={stats.summary?.totalExpense || 0}
           icon={DollarSign}
           isCurrency
           color="text-primary-600"
+          subtitle="所有物品买入价合计"
         />
         <StatCard
           title="总附加成本"
@@ -89,6 +90,7 @@ export default function Stats() {
           icon={Wallet}
           isCurrency
           color="text-rose-600"
+          subtitle="运费/维修/配件等"
         />
         <StatCard
           title="总收入"
@@ -96,6 +98,7 @@ export default function Stats() {
           icon={DollarSign}
           isCurrency
           color="text-emerald-600"
+          subtitle="已售出物品成交净额"
         />
         <StatCard
           title="净利润"
@@ -103,21 +106,24 @@ export default function Stats() {
           icon={TrendingUp}
           isCurrency
           color={stats.summary && stats.summary.netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}
+          subtitle="扣除综合成本后的真实收益"
         />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard
-          title="回本率"
+          title="整体回本率"
           value={`${stats.summary?.returnRate || 0}%`}
           icon={Percent}
           color={stats.summary && stats.summary.returnRate >= 100 ? 'text-emerald-600' : 'text-primary-600'}
+          subtitle="基于综合成本计算"
         />
         <StatCard
           title="平均毛利率"
           value={`${stats.summary?.avgGrossMargin || 0}%`}
           icon={Percent}
           color={getProfitColor(stats.summary?.avgGrossMargin || 0)}
+          subtitle="已售物品的平均毛利率"
         />
         <StatCard
           title="平均回本周期"
