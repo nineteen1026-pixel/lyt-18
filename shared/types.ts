@@ -99,6 +99,7 @@ export interface Offer {
   currentPrice: number;
   status: OfferStatus;
   shippingFee?: number;
+  saleId?: number;
   note?: string;
   createdAt: string;
   updatedAt: string;

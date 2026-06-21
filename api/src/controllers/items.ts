@@ -150,6 +150,26 @@ export const getItemById = (req: Request, res: Response) => {
     FROM listings WHERE item_id = ? ORDER BY created_at DESC
   `).all(id) as any[];
 
+  const offers = db.prepare(`
+    SELECT o.id, o.listing_id AS listingId, o.item_id AS itemId, o.buyer_name AS buyerName,
+           o.buyer_contact AS buyerContact, o.offer_price AS offerPrice, o.current_price AS currentPrice,
+           o.status, o.shipping_fee AS shippingFee, o.sale_id AS saleId, o.note,
+           o.created_at AS createdAt, o.updated_at AS updatedAt,
+           l.price AS listingPrice, l.platform
+    FROM offers o
+    LEFT JOIN listings l ON o.listing_id = l.id
+    WHERE o.item_id = ?
+    ORDER BY o.created_at DESC
+  `).all(id) as any[];
+
+  const offersWithHistories = offers.map((o: any) => {
+    const histories = db.prepare(`
+      SELECT id, offer_id AS offerId, actor, action, price, comment, created_at AS createdAt
+      FROM offer_histories WHERE offer_id = ? ORDER BY created_at ASC
+    `).all(o.id);
+    return { ...o, histories };
+  });
+
   const sale = db.prepare(`
     SELECT id, item_id AS itemId, listing_id AS listingId, platform, sale_price AS salePrice, sale_date AS saleDate, shipping_fee AS shippingFee, buyer_info AS buyerInfo, note, created_at AS createdAt
     FROM sales WHERE item_id = ?
@@ -164,6 +184,7 @@ export const getItemById = (req: Request, res: Response) => {
       ...itemWithStats,
       usageRecords,
       listings,
+      offers: offersWithHistories,
       sale,
     },
   });

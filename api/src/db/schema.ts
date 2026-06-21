@@ -73,11 +73,13 @@ export function initSchema() {
       current_price DECIMAL(10,2) NOT NULL,
       status VARCHAR(20) NOT NULL DEFAULT 'pending',
       shipping_fee DECIMAL(10,2) DEFAULT 0,
+      sale_id INTEGER,
       note TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE,
-      FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+      FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+      FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS offer_histories (

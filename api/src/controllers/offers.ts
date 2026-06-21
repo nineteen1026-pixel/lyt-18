@@ -13,6 +13,7 @@ function buildOfferWithDetails(o: any, includeHistories = true): OfferWithDetail
     currentPrice: Number(o.current_price),
     status: o.status,
     shippingFee: Number(o.shipping_fee) || 0,
+    saleId: o.sale_id || undefined,
     note: o.note,
     createdAt: o.created_at,
     updatedAt: o.updated_at,
@@ -411,6 +412,14 @@ export const createSaleFromOffer = (req: Request, res: Response) => {
     });
   }
 
+  if (offer.sale_id) {
+    return res.status(400).json({
+      code: 400,
+      message: '该出价已关联成交单，请勿重复生成',
+      data: null,
+    });
+  }
+
   const item = db.prepare(`
     SELECT id FROM items WHERE id = ?
   `).get(offer.item_id);
@@ -451,17 +460,36 @@ export const createSaleFromOffer = (req: Request, res: Response) => {
       finalNote
     );
 
+    const saleId = result.lastInsertRowid;
+
     db.prepare("UPDATE items SET status = 'sold', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(offer.item_id);
 
     db.prepare("UPDATE listings SET status = 'sold', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(offer.listing_id);
 
     db.prepare(`
       UPDATE offers
-      SET updated_at = CURRENT_TIMESTAMP
+      SET sale_id = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(id);
+    `).run(saleId, id);
 
-    return result.lastInsertRowid;
+    db.prepare(`
+      UPDATE offers
+      SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+      WHERE listing_id = ? AND id != ? AND status IN ('pending', 'negotiating')
+    `).run(offer.listing_id, id);
+
+    const cancelledOfferIds: number[] = db.prepare(`
+      SELECT id FROM offers WHERE listing_id = ? AND id != ? AND status = 'cancelled'
+    `).all(offer.listing_id, id).map((r: any) => r.id);
+
+    cancelledOfferIds.forEach((cancelledId: number) => {
+      db.prepare(`
+        INSERT INTO offer_histories (offer_id, actor, action, comment)
+        VALUES (?, 'seller', 'cancel', ?)
+      `).run(cancelledId, '同挂售已生成成交，自动关闭');
+    });
+
+    return saleId;
   });
 
   const saleId = tx();

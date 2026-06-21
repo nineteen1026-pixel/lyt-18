@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Tag, Package, Plus, Trash2, Clock, DollarSign, TrendingUp, Wallet, Wrench, Truck, Sparkles, ShoppingCart, Percent } from 'lucide-react';
+import { ArrowLeft, Calendar, Tag, Package, Plus, Trash2, Clock, DollarSign, TrendingUp, Wallet, Wrench, Truck, Sparkles, ShoppingCart, Percent, MessageSquare, Check, X, RefreshCw, ChevronDown, ChevronUp, User, Phone, FileText, History } from 'lucide-react';
 import { api } from '../../utils/api';
-import { STATUS_LABELS, STATUS_COLORS, PLATFORM_LABELS, PLATFORM_COLORS, LISTING_STATUS_LABELS, COST_TYPE_LABELS, COST_TYPE_COLORS, type ItemCost, type CostType } from '../../../shared/types';
+import { STATUS_LABELS, STATUS_COLORS, PLATFORM_LABELS, PLATFORM_COLORS, LISTING_STATUS_LABELS, COST_TYPE_LABELS, COST_TYPE_COLORS, OFFER_STATUS_LABELS, OFFER_STATUS_COLORS, OFFER_ACTION_LABELS, OFFER_ACTOR_LABELS, type ItemCost, type CostType, type OfferWithDetails, type ListingWithItem } from '../../../shared/types';
 import { formatCurrency, formatDate, formatDays, getProgressColor, getProfitColor, formatProfit } from '../../utils/format';
 import Modal from '../../components/Modal/Modal';
 
@@ -26,7 +26,8 @@ interface ItemDetailData {
   costs?: ItemCost[];
   sale?: any;
   usageRecords: any[];
-  listings: any[];
+  listings: ListingWithItem[];
+  offers: OfferWithDetails[];
 }
 
 const COST_TYPE_ICONS: Record<CostType, typeof Truck> = {
@@ -37,15 +38,17 @@ const COST_TYPE_ICONS: Record<CostType, typeof Truck> = {
   other: Wallet,
 };
 
+type DetailModalMode = 'none' | 'listing' | 'sale' | 'usage' | 'cost' | 'offer' | 'counter' | 'reject' | 'history' | 'createSale';
+
 export default function ItemDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [item, setItem] = useState<ItemDetailData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [listingModalOpen, setListingModalOpen] = useState(false);
-  const [saleModalOpen, setSaleModalOpen] = useState(false);
-  const [usageModalOpen, setUsageModalOpen] = useState(false);
-  const [costModalOpen, setCostModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<DetailModalMode>('none');
+  const [expandedListingId, setExpandedListingId] = useState<number | null>(null);
+  const [selectedOffer, setSelectedOffer] = useState<OfferWithDetails | null>(null);
+  const [selectedListingForOffer, setSelectedListingForOffer] = useState<ListingWithItem | null>(null);
   const [listingForm, setListingForm] = useState({
     platform: 'xianyu',
     price: '',
@@ -71,6 +74,20 @@ export default function ItemDetail() {
     note: '',
     date: new Date().toISOString().split('T')[0],
   });
+  const [offerForm, setOfferForm] = useState({
+    buyerName: '',
+    buyerContact: '',
+    offerPrice: '',
+    shippingFee: '',
+    note: '',
+  });
+  const [counterForm, setCounterForm] = useState({ counterPrice: '', comment: '' });
+  const [rejectForm, setRejectForm] = useState({ comment: '' });
+  const [createSaleForm, setCreateSaleForm] = useState({
+    saleDate: new Date().toISOString().split('T')[0],
+    shippingFee: '',
+    note: '',
+  });
 
   useEffect(() => {
     fetchItemDetail();
@@ -89,6 +106,12 @@ export default function ItemDetail() {
     }
   };
 
+  const closeModal = () => {
+    setModalMode('none');
+    setSelectedOffer(null);
+    setSelectedListingForOffer(null);
+  };
+
   const handleAddListing = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!item) return;
@@ -98,7 +121,7 @@ export default function ItemDetail() {
         ...listingForm,
         price: Number(listingForm.price),
       });
-      setListingModalOpen(false);
+      closeModal();
       fetchItemDetail();
     } catch (err) {
       alert((err as Error).message);
@@ -119,7 +142,7 @@ export default function ItemDetail() {
         buyerInfo: saleForm.buyerInfo,
         note: saleForm.note,
       });
-      setSaleModalOpen(false);
+      closeModal();
       fetchItemDetail();
     } catch (err) {
       alert((err as Error).message);
@@ -131,7 +154,7 @@ export default function ItemDetail() {
     if (!item) return;
     try {
       await api.items.addUsage(item.id, usageForm);
-      setUsageModalOpen(false);
+      closeModal();
       setUsageForm({ content: '', date: new Date().toISOString().split('T')[0] });
       fetchItemDetail();
     } catch (err) {
@@ -149,7 +172,7 @@ export default function ItemDetail() {
         note: costForm.note,
         date: costForm.date,
       });
-      setCostModalOpen(false);
+      closeModal();
       setCostForm({
         type: 'shipping',
         amount: '',
@@ -175,7 +198,7 @@ export default function ItemDetail() {
   };
 
   const handleDeleteListing = async (listingId: number) => {
-    if (confirm('确定要删除这条挂售记录吗？')) {
+    if (confirm('确定要删除这条挂售记录吗？相关出价也会被删除。')) {
       try {
         await api.listings.delete(listingId);
         fetchItemDetail();
@@ -183,6 +206,149 @@ export default function ItemDetail() {
         alert((err as Error).message);
       }
     }
+  };
+
+  const openOfferModal = (listing: ListingWithItem) => {
+    setSelectedListingForOffer(listing);
+    setOfferForm({
+      buyerName: '',
+      buyerContact: '',
+      offerPrice: String(listing.price),
+      shippingFee: '',
+      note: '',
+    });
+    setModalMode('offer');
+  };
+
+  const openCounterModal = (offer: OfferWithDetails) => {
+    setSelectedOffer(offer);
+    setCounterForm({
+      counterPrice: String(offer.listingPrice),
+      comment: '',
+    });
+    setModalMode('counter');
+  };
+
+  const openRejectModal = (offer: OfferWithDetails) => {
+    setSelectedOffer(offer);
+    setRejectForm({ comment: '' });
+    setModalMode('reject');
+  };
+
+  const openHistoryModal = (offer: OfferWithDetails) => {
+    setSelectedOffer(offer);
+    setModalMode('history');
+  };
+
+  const openCreateSaleModal = (offer: OfferWithDetails) => {
+    setSelectedOffer(offer);
+    setCreateSaleForm({
+      saleDate: new Date().toISOString().split('T')[0],
+      shippingFee: String(offer.shippingFee || 0),
+      note: '',
+    });
+    setModalMode('createSale');
+  };
+
+  const handleSubmitOffer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedListingForOffer) return;
+    try {
+      await api.offers.create({
+        listingId: selectedListingForOffer.id,
+        buyerName: offerForm.buyerName,
+        buyerContact: offerForm.buyerContact || undefined,
+        offerPrice: Number(offerForm.offerPrice),
+        shippingFee: offerForm.shippingFee ? Number(offerForm.shippingFee) : 0,
+        note: offerForm.note || undefined,
+      });
+      closeModal();
+      fetchItemDetail();
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  };
+
+  const handleAcceptOffer = async (offer: OfferWithDetails) => {
+    if (confirm(`确定接受买家 ${offer.buyerName} 的出价 ${formatCurrency(offer.currentPrice)} 吗？`)) {
+      try {
+        await api.offers.accept(offer.id);
+        fetchItemDetail();
+      } catch (err) {
+        alert((err as Error).message);
+      }
+    }
+  };
+
+  const handleSubmitCounter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOffer) return;
+    try {
+      await api.offers.counter(selectedOffer.id, {
+        counterPrice: Number(counterForm.counterPrice),
+        comment: counterForm.comment || undefined,
+      });
+      closeModal();
+      fetchItemDetail();
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  };
+
+  const handleSubmitReject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOffer) return;
+    try {
+      await api.offers.reject(selectedOffer.id, {
+        comment: rejectForm.comment || undefined,
+      });
+      closeModal();
+      fetchItemDetail();
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  };
+
+  const handleSubmitCreateSale = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOffer) return;
+    try {
+      await api.offers.createSale(selectedOffer.id, {
+        saleDate: createSaleForm.saleDate,
+        shippingFee: createSaleForm.shippingFee ? Number(createSaleForm.shippingFee) : undefined,
+        note: createSaleForm.note || undefined,
+      });
+      closeModal();
+      fetchItemDetail();
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  };
+
+  const handleDeleteOffer = async (offerId: number) => {
+    if (confirm('确定要删除这条出价记录吗？')) {
+      try {
+        await api.offers.delete(offerId);
+        fetchItemDetail();
+      } catch (err) {
+        alert((err as Error).message);
+      }
+    }
+  };
+
+  const getListingOffers = (listingId: number) => {
+    return item?.offers.filter(o => o.listingId === listingId) || [];
+  };
+
+  const getPriceDiffColor = (offer: OfferWithDetails) => {
+    const diff = offer.currentPrice - offer.listingPrice;
+    if (diff >= 0) return 'text-emerald-600';
+    if (diff >= -offer.listingPrice * 0.1) return 'text-amber-600';
+    return 'text-rose-600';
+  };
+
+  const toggleExpandListing = (listingId: number) => {
+    setExpandedListingId(expandedListingId === listingId ? null : listingId);
   };
 
   if (loading) {
@@ -204,6 +370,150 @@ export default function ItemDetail() {
   const imageUrl = item.image || `https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=${encodeURIComponent(item.name + ' ' + item.category)}&image_size=square`;
 
   const costEntries = Object.entries(item.costsBreakdown).filter(([, v]) => v > 0);
+
+  const renderOfferCard = (offer: OfferWithDetails) => (
+    <div
+      key={offer.id}
+      className="bg-white rounded-lg p-4 border border-slate-200 hover:border-primary-200 transition-all"
+    >
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <div className="flex-1 space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${OFFER_STATUS_COLORS[offer.status]}`}>
+              {OFFER_STATUS_LABELS[offer.status]}
+            </span>
+            <span className="flex items-center gap-1 text-sm text-slate-700 font-medium">
+              <User className="w-4 h-4" />
+              {offer.buyerName}
+            </span>
+            {offer.buyerContact && (
+              <span className="flex items-center gap-1 text-xs text-slate-500">
+                <Phone className="w-3 h-3" />
+                {offer.buyerContact}
+              </span>
+            )}
+          </div>
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <div>
+              <span className="text-xs text-slate-500">初始出价：</span>
+              <span className="text-sm text-slate-600 line-through">{formatCurrency(offer.offerPrice)}</span>
+            </div>
+            <div>
+              <span className="text-xs text-slate-500">当前价格：</span>
+              <span className={`text-lg font-bold ${getPriceDiffColor(offer)}`}>
+                {formatCurrency(offer.currentPrice)}
+              </span>
+              <span className={`text-xs ml-1 ${getPriceDiffColor(offer)}`}>
+                ({offer.currentPrice >= offer.listingPrice ? '+' : ''}
+                {formatCurrency(offer.currentPrice - offer.listingPrice)})
+              </span>
+            </div>
+            {offer.shippingFee ? (
+              <div>
+                <span className="text-xs text-slate-500">运费：</span>
+                <span className="text-sm text-slate-600">{formatCurrency(offer.shippingFee)}</span>
+              </div>
+            ) : null}
+            <div>
+              <span className="text-xs text-slate-500">挂售价：</span>
+              <span className="text-sm text-slate-600">{formatCurrency(offer.listingPrice)}</span>
+            </div>
+          </div>
+          {offer.note && (
+            <div className="flex items-start gap-1 text-xs text-slate-500">
+              <FileText className="w-3 h-3 mt-0.5 flex-shrink-0" />
+              <span>{offer.note}</span>
+            </div>
+          )}
+          <div className="text-xs text-slate-400">
+            创建于 {formatDate(offer.createdAt)}
+            {offer.createdAt !== offer.updatedAt && ` · 更新于 ${formatDate(offer.updatedAt)}`}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 flex-wrap">
+          <button
+            onClick={() => openHistoryModal(offer)}
+            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+            title="议价历史"
+          >
+            <History className="w-4 h-4" />
+          </button>
+          {['pending', 'negotiating'].includes(offer.status) && (
+            <>
+              <button
+                onClick={() => handleAcceptOffer(offer)}
+                className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                title="接受出价"
+              >
+                <Check className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => openCounterModal(offer)}
+                className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                title="还价"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => openRejectModal(offer)}
+                className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                title="拒绝"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          )}
+          {offer.status === 'accepted' && !offer.saleId && (
+            <button
+              onClick={() => openCreateSaleModal(offer)}
+              className="flex items-center gap-1 px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium"
+              title="生成成交单"
+            >
+              <ShoppingCart className="w-4 h-4" />
+              生成成交单
+            </button>
+          )}
+          {offer.saleId && (
+            <span className="px-3 py-2 bg-slate-200 text-slate-600 rounded-lg text-xs font-medium flex items-center gap-1">
+              <Check className="w-3.5 h-3.5" />
+              已关联成交单 #{offer.saleId}
+            </span>
+          )}
+          <button
+            onClick={() => handleDeleteOffer(offer.id)}
+            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+            title="删除出价"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+      {offer.histories && offer.histories.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
+            <History className="w-3 h-3" />
+            最近议价记录
+          </div>
+          <div className="space-y-1">
+            {offer.histories.slice(-3).reverse().map((history) => (
+              <div key={history.id} className="text-xs text-slate-600 flex items-baseline gap-2">
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                  history.actor === 'seller' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
+                }`}>
+                  {OFFER_ACTOR_LABELS[history.actor]}
+                </span>
+                <span>{OFFER_ACTION_LABELS[history.action]}</span>
+                {history.price && (
+                  <span className="font-medium text-slate-700">{formatCurrency(history.price)}</span>
+                )}
+                {history.comment && <span className="text-slate-500">「{history.comment}」</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -402,14 +712,14 @@ export default function ItemDetail() {
             {item.status !== 'sold' && (
               <>
                 <button
-                  onClick={() => setListingModalOpen(true)}
+                  onClick={() => setModalMode('listing')}
                   className="btn-secondary flex-1 flex items-center justify-center gap-2"
                 >
                   <Tag className="w-4 h-4" />
                   发起挂售
                 </button>
                 <button
-                  onClick={() => setSaleModalOpen(true)}
+                  onClick={() => setModalMode('sale')}
                   className="btn-primary flex-1 flex items-center justify-center gap-2"
                 >
                   <Package className="w-4 h-4" />
@@ -435,7 +745,7 @@ export default function ItemDetail() {
                 附加成本明细
               </h3>
               <button
-                onClick={() => setCostModalOpen(true)}
+                onClick={() => setModalMode('cost')}
                 className="text-sm text-rose-600 hover:text-rose-700 font-medium flex items-center gap-1"
               >
                 <Plus className="w-4 h-4" />
@@ -488,7 +798,7 @@ export default function ItemDetail() {
                 使用记录
               </h3>
               <button
-                onClick={() => setUsageModalOpen(true)}
+                onClick={() => setModalMode('usage')}
                 className="text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
               >
                 <Plus className="w-4 h-4" />
@@ -515,52 +825,168 @@ export default function ItemDetail() {
           </div>
 
           <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
-            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <Tag className="w-5 h-5 text-blue-600" />
-              挂售记录
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                <Tag className="w-5 h-5 text-blue-600" />
+                挂售记录与出价
+              </h3>
+              {item.status !== 'sold' && (
+                <button
+                  onClick={() => setModalMode('listing')}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+                >
+                  <Plus className="w-4 h-4" />
+                  发起挂售
+                </button>
+              )}
+            </div>
             {item.listings.length === 0 ? (
               <p className="text-sm text-slate-500 text-center py-4">暂无挂售记录</p>
             ) : (
               <div className="space-y-3">
-                {item.listings.map((listing) => (
-                  <div key={listing.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-xs"
-                        style={{ backgroundColor: PLATFORM_COLORS[listing.platform] }}
-                      >
-                        {PLATFORM_LABELS[listing.platform].charAt(0)}
+                {item.listings.map((listing) => {
+                  const listingOffers = getListingOffers(listing.id);
+                  const isExpanded = expandedListingId === listing.id;
+                  const activeOffers = listingOffers.filter(o => ['pending', 'negotiating'].includes(o.status));
+                  const acceptedOffers = listingOffers.filter(o => o.status === 'accepted');
+
+                  return (
+                    <div key={listing.id} className="rounded-lg border border-slate-200 overflow-hidden">
+                      <div className="px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <button
+                            onClick={() => toggleExpandListing(listing.id)}
+                            className="flex items-center gap-3 text-left flex-1 min-w-0"
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                            ) : (
+                              <ChevronDown className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                            )}
+                            <div
+                              className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-xs flex-shrink-0"
+                              style={{ backgroundColor: PLATFORM_COLORS[listing.platform] }}
+                            >
+                              {PLATFORM_LABELS[listing.platform].charAt(0)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium text-slate-800">
+                                {PLATFORM_LABELS[listing.platform]}
+                              </div>
+                              {listing.note && (
+                                <div className="text-xs text-slate-500 line-clamp-1">{listing.note}</div>
+                              )}
+                            </div>
+                          </button>
+
+                          <div className="flex items-center gap-4 flex-wrap sm:justify-end sm:flex-1">
+                            <div className="text-center">
+                              <div className="text-xs text-slate-400">挂售价</div>
+                              <div className="text-sm font-bold text-primary-600">{formatCurrency(listing.price)}</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-xs text-slate-400">日期</div>
+                              <div className="text-sm text-slate-600">{formatDate(listing.listDate)}</div>
+                            </div>
+                            <div className="text-center">
+                              <span className={`status-badge ${
+                                listing.status === 'active' ? 'bg-blue-100 text-blue-700' :
+                                listing.status === 'sold' ? 'bg-emerald-100 text-emerald-700' :
+                                'bg-slate-100 text-slate-700'
+                              }`}>
+                                {LISTING_STATUS_LABELS[listing.status]}
+                              </span>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-xs text-slate-400 flex items-center gap-1 justify-center">
+                                <MessageSquare className="w-3 h-3" />
+                                出价
+                              </div>
+                              <div className="flex items-center gap-1 justify-center">
+                                <span className="text-sm font-bold text-slate-700">{listingOffers.length}</span>
+                                {activeOffers.length > 0 && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                                    {activeOffers.length}待处理
+                                  </span>
+                                )}
+                                {acceptedOffers.length > 0 && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                                    {acceptedOffers.length}已接受
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {listing.status !== 'sold' && (
+                              <>
+                                <button
+                                  onClick={() => openOfferModal(listing)}
+                                  className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                                  title="添加出价"
+                                >
+                                  <Tag className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteListing(listing.id)}
+                                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                  title="删除挂售"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-slate-800">{PLATFORM_LABELS[listing.platform]}</p>
-                        <p className="text-xs text-slate-500">
-                          {formatDate(listing.listDate)} 挂售 · 报价 {formatCurrency(listing.price)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="status-badge bg-blue-100 text-blue-700">
-                        {LISTING_STATUS_LABELS[listing.status]}
-                      </span>
-                      {listing.status !== 'sold' && (
-                        <button
-                          onClick={() => handleDeleteListing(listing.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+
+                      {isExpanded && (
+                        <div className="bg-white px-4 pb-4 pt-2">
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                              <MessageSquare className="w-4 h-4" />
+                              出价记录 ({listingOffers.length})
+                            </h4>
+                            {listing.status !== 'sold' && (
+                              <button
+                                onClick={() => openOfferModal(listing)}
+                                className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
+                              >
+                                <Plus className="w-3 h-3" />
+                                添加出价
+                              </button>
+                            )}
+                          </div>
+                          {listingOffers.length === 0 ? (
+                            <div className="py-8 text-center bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                              <MessageSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                              <p className="text-sm text-slate-500">暂无出价记录</p>
+                              {listing.status !== 'sold' && (
+                                <button
+                                  onClick={() => openOfferModal(listing)}
+                                  className="mt-2 text-xs text-primary-600 hover:text-primary-700 font-medium"
+                                >
+                                  立即添加第一条出价
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {listingOffers.map(renderOfferCard)}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
       </div>
 
-      <Modal isOpen={listingModalOpen} onClose={() => setListingModalOpen(false)} title="发起挂售">
+      <Modal isOpen={modalMode === 'listing'} onClose={closeModal} title="发起挂售">
         <form onSubmit={handleAddListing} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">挂售平台</label>
@@ -607,7 +1033,7 @@ export default function ItemDetail() {
             />
           </div>
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={() => setListingModalOpen(false)} className="btn-secondary flex-1">
+            <button type="button" onClick={closeModal} className="btn-secondary flex-1">
               取消
             </button>
             <button type="submit" className="btn-primary flex-1">
@@ -617,7 +1043,7 @@ export default function ItemDetail() {
         </form>
       </Modal>
 
-      <Modal isOpen={saleModalOpen} onClose={() => setSaleModalOpen(false)} title="录入成交">
+      <Modal isOpen={modalMode === 'sale'} onClose={closeModal} title="录入成交">
         <form onSubmit={handleAddSale} className="space-y-4">
           {item.listings.filter(l => l.status === 'active').length > 0 && (
             <div>
@@ -732,7 +1158,6 @@ export default function ItemDetail() {
                 <div className="flex justify-between">
                   <span className="text-slate-500">综合成本</span>
                   <span className="text-slate-600">{formatCurrency(item.totalCost)}</span>
-                  <span className="text-xs text-slate-400">买入+附加</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">净利润</span>
@@ -753,7 +1178,7 @@ export default function ItemDetail() {
             </div>
           )}
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={() => setSaleModalOpen(false)} className="btn-secondary flex-1">
+            <button type="button" onClick={closeModal} className="btn-secondary flex-1">
               取消
             </button>
             <button type="submit" className="btn-primary flex-1">
@@ -763,7 +1188,7 @@ export default function ItemDetail() {
         </form>
       </Modal>
 
-      <Modal isOpen={usageModalOpen} onClose={() => setUsageModalOpen(false)} title="添加使用记录">
+      <Modal isOpen={modalMode === 'usage'} onClose={closeModal} title="添加使用记录">
         <form onSubmit={handleAddUsage} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">记录内容</label>
@@ -786,7 +1211,7 @@ export default function ItemDetail() {
             />
           </div>
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={() => setUsageModalOpen(false)} className="btn-secondary flex-1">
+            <button type="button" onClick={closeModal} className="btn-secondary flex-1">
               取消
             </button>
             <button type="submit" className="btn-primary flex-1">
@@ -796,7 +1221,7 @@ export default function ItemDetail() {
         </form>
       </Modal>
 
-      <Modal isOpen={costModalOpen} onClose={() => setCostModalOpen(false)} title="添加附加成本">
+      <Modal isOpen={modalMode === 'cost'} onClose={closeModal} title="添加附加成本">
         <form onSubmit={handleAddCost} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">成本类型</label>
@@ -843,11 +1268,355 @@ export default function ItemDetail() {
             />
           </div>
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={() => setCostModalOpen(false)} className="btn-secondary flex-1">
+            <button type="button" onClick={closeModal} className="btn-secondary flex-1">
               取消
             </button>
             <button type="submit" className="btn-primary flex-1" style={{ backgroundColor: '#E11D48' }}>
               确认添加
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={modalMode === 'offer'}
+        onClose={closeModal}
+        title={`添加出价 - ${item?.name}`}
+      >
+        <form onSubmit={handleSubmitOffer} className="space-y-4">
+          <div className="bg-slate-50 rounded-lg p-3 text-sm">
+            <div className="flex justify-between text-slate-600">
+              <span>挂售平台：</span>
+              <span className="font-medium">
+                {selectedListingForOffer && PLATFORM_LABELS[selectedListingForOffer.platform]}
+              </span>
+            </div>
+            <div className="flex justify-between text-slate-600 mt-1">
+              <span>挂售价格：</span>
+              <span className="font-bold text-primary-600">
+                {selectedListingForOffer && formatCurrency(selectedListingForOffer.price)}
+              </span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              <User className="w-4 h-4 inline mr-1" />
+              买家姓名 *
+            </label>
+            <input
+              type="text"
+              value={offerForm.buyerName}
+              onChange={(e) => setOfferForm({ ...offerForm, buyerName: e.target.value })}
+              className="input-field"
+              placeholder="请输入买家姓名"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              <Phone className="w-4 h-4 inline mr-1" />
+              联系方式
+            </label>
+            <input
+              type="text"
+              value={offerForm.buyerContact}
+              onChange={(e) => setOfferForm({ ...offerForm, buyerContact: e.target.value })}
+              className="input-field"
+              placeholder="手机号、微信号等"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              <Tag className="w-4 h-4 inline mr-1" />
+              出价金额 *
+            </label>
+            <input
+              type="number"
+              value={offerForm.offerPrice}
+              onChange={(e) => setOfferForm({ ...offerForm, offerPrice: e.target.value })}
+              className="input-field"
+              placeholder="0.00"
+              min="0"
+              step="0.01"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">运费</label>
+            <input
+              type="number"
+              value={offerForm.shippingFee}
+              onChange={(e) => setOfferForm({ ...offerForm, shippingFee: e.target.value })}
+              className="input-field"
+              placeholder="0.00"
+              min="0"
+              step="0.01"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              <FileText className="w-4 h-4 inline mr-1" />
+              备注
+            </label>
+            <textarea
+              value={offerForm.note}
+              onChange={(e) => setOfferForm({ ...offerForm, note: e.target.value })}
+              className="input-field min-h-[60px]"
+              placeholder="出价相关备注..."
+            />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={closeModal} className="btn-secondary flex-1">
+              取消
+            </button>
+            <button type="submit" className="btn-primary flex-1">
+              添加出价
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={modalMode === 'counter'}
+        onClose={closeModal}
+        title={`还价 - ${selectedOffer?.buyerName}`}
+      >
+        <form onSubmit={handleSubmitCounter} className="space-y-4">
+          <div className="bg-slate-50 rounded-lg p-3 text-sm space-y-1">
+            <div className="flex justify-between text-slate-600">
+              <span>挂售价：</span>
+              <span className="font-medium">{selectedOffer && formatCurrency(selectedOffer.listingPrice)}</span>
+            </div>
+            <div className="flex justify-between text-slate-600">
+              <span>买家当前出价：</span>
+              <span className="font-bold text-primary-600">
+                {selectedOffer && formatCurrency(selectedOffer.currentPrice)}
+              </span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              <Tag className="w-4 h-4 inline mr-1" />
+              还价金额 *
+            </label>
+            <input
+              type="number"
+              value={counterForm.counterPrice}
+              onChange={(e) => setCounterForm({ ...counterForm, counterPrice: e.target.value })}
+              className="input-field"
+              placeholder="0.00"
+              min="0"
+              step="0.01"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              <MessageSquare className="w-4 h-4 inline mr-1" />
+              备注
+            </label>
+            <textarea
+              value={counterForm.comment}
+              onChange={(e) => setCounterForm({ ...counterForm, comment: e.target.value })}
+              className="input-field min-h-[60px]"
+              placeholder="还价说明..."
+            />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={closeModal} className="btn-secondary flex-1">
+              取消
+            </button>
+            <button type="submit" className="btn-primary flex-1">
+              确认还价
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={modalMode === 'reject'}
+        onClose={closeModal}
+        title={`拒绝出价 - ${selectedOffer?.buyerName}`}
+      >
+        <form onSubmit={handleSubmitReject} className="space-y-4">
+          <div className="bg-rose-50 rounded-lg p-3 text-sm">
+            <div className="text-rose-700 font-medium">
+              即将拒绝 {selectedOffer?.buyerName} 的出价 {selectedOffer && formatCurrency(selectedOffer.currentPrice)}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              <MessageSquare className="w-4 h-4 inline mr-1" />
+              拒绝原因（可选）
+            </label>
+            <textarea
+              value={rejectForm.comment}
+              onChange={(e) => setRejectForm({ ...rejectForm, comment: e.target.value })}
+              className="input-field min-h-[80px]"
+              placeholder="为什么拒绝这个出价..."
+            />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={closeModal} className="btn-secondary flex-1">
+              取消
+            </button>
+            <button type="submit" className="flex-1 py-2.5 px-4 rounded-lg font-medium bg-rose-600 text-white hover:bg-rose-700 transition-colors">
+              确认拒绝
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={modalMode === 'history'}
+        onClose={closeModal}
+        title={`议价历史 - ${selectedOffer?.buyerName}`}
+      >
+        <div className="space-y-4">
+          <div className="bg-slate-50 rounded-lg p-3 text-sm space-y-1">
+            <div className="flex justify-between text-slate-600">
+              <span>初始出价：</span>
+              <span className="font-medium">{selectedOffer && formatCurrency(selectedOffer.offerPrice)}</span>
+            </div>
+            <div className="flex justify-between text-slate-600">
+              <span>当前价格：</span>
+              <span className="font-bold text-primary-600">
+                {selectedOffer && formatCurrency(selectedOffer.currentPrice)}
+              </span>
+            </div>
+            <div className="flex justify-between text-slate-600">
+              <span>当前状态：</span>
+              {selectedOffer && (
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${OFFER_STATUS_COLORS[selectedOffer.status]}`}>
+                  {OFFER_STATUS_LABELS[selectedOffer.status]}
+                </span>
+              )}
+            </div>
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <History className="w-4 h-4" />
+              完整记录
+            </h4>
+            {selectedOffer?.histories && selectedOffer.histories.length > 0 ? (
+              <div className="relative">
+                <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-slate-200" />
+                <div className="space-y-4">
+                  {selectedOffer.histories.map((history) => (
+                    <div key={history.id} className="relative pl-8">
+                      <div className={`absolute left-1.5 w-3 h-3 rounded-full border-2 border-white ${
+                        history.actor === 'seller' ? 'bg-blue-500' : 'bg-purple-500'
+                      }`} />
+                      <div className="bg-white rounded-lg border border-slate-200 p-3">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            history.actor === 'seller' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
+                          }`}>
+                            {OFFER_ACTOR_LABELS[history.actor]}
+                          </span>
+                          <span className="font-medium text-slate-800 text-sm">
+                            {OFFER_ACTION_LABELS[history.action]}
+                          </span>
+                          {history.price && (
+                            <span className="text-sm font-bold text-primary-600">
+                              {formatCurrency(history.price)}
+                            </span>
+                          )}
+                        </div>
+                        {history.comment && (
+                          <p className="text-sm text-slate-600 mb-1">「{history.comment}」</p>
+                        )}
+                        <p className="text-xs text-slate-400">{formatDate(history.createdAt)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-sm text-slate-500">
+                暂无议价记录
+              </div>
+            )}
+          </div>
+          <div className="pt-2">
+            <button onClick={closeModal} className="btn-primary w-full">
+              关闭
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={modalMode === 'createSale'}
+        onClose={closeModal}
+        title={`生成成交单 - ${selectedOffer?.buyerName}`}
+      >
+        <form onSubmit={handleSubmitCreateSale} className="space-y-4">
+          <div className="bg-emerald-50 rounded-lg p-3 text-sm space-y-1">
+            <div className="flex justify-between text-slate-700">
+              <span>物品：</span>
+              <span className="font-medium">{item?.name}</span>
+            </div>
+            <div className="flex justify-between text-slate-700">
+              <span>成交价：</span>
+              <span className="font-bold text-emerald-700">
+                {selectedOffer && formatCurrency(selectedOffer.currentPrice)}
+              </span>
+            </div>
+            <div className="flex justify-between text-slate-700">
+              <span>买家：</span>
+              <span className="font-medium">{selectedOffer?.buyerName}</span>
+            </div>
+            {selectedOffer?.buyerContact && (
+              <div className="flex justify-between text-slate-700">
+                <span>联系方式：</span>
+                <span className="font-medium">{selectedOffer.buyerContact}</span>
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">成交日期 *</label>
+            <input
+              type="date"
+              value={createSaleForm.saleDate}
+              onChange={(e) => setCreateSaleForm({ ...createSaleForm, saleDate: e.target.value })}
+              className="input-field"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">运费</label>
+            <input
+              type="number"
+              value={createSaleForm.shippingFee}
+              onChange={(e) => setCreateSaleForm({ ...createSaleForm, shippingFee: e.target.value })}
+              className="input-field"
+              placeholder="0.00"
+              min="0"
+              step="0.01"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              <FileText className="w-4 h-4 inline mr-1" />
+              备注
+            </label>
+            <textarea
+              value={createSaleForm.note}
+              onChange={(e) => setCreateSaleForm({ ...createSaleForm, note: e.target.value })}
+              className="input-field min-h-[60px]"
+              placeholder="成交备注..."
+            />
+          </div>
+          <div className="bg-amber-50 rounded-lg p-3 text-xs text-amber-700">
+            生成成交单后，物品状态将变为「已成交」，挂售记录状态将变为「已售出」，同挂售的其他待处理出价将自动关闭。
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={closeModal} className="btn-secondary flex-1">
+              取消
+            </button>
+            <button type="submit" className="flex-1 py-2.5 px-4 rounded-lg font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
+              确认生成成交单
             </button>
           </div>
         </form>

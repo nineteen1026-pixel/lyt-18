@@ -375,7 +375,7 @@ export default function Listings() {
               </button>
             </>
           )}
-          {offer.status === 'accepted' && (
+          {offer.status === 'accepted' && !offer.saleId && (
             <button
               onClick={() => openCreateSaleModal(offer)}
               className="flex items-center gap-1 px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium"
@@ -384,6 +384,12 @@ export default function Listings() {
               <ShoppingCart className="w-4 h-4" />
               生成成交单
             </button>
+          )}
+          {offer.saleId && (
+            <span className="px-3 py-2 bg-slate-200 text-slate-600 rounded-lg text-xs font-medium flex items-center gap-1">
+              <Check className="w-3.5 h-3.5" />
+              已关联成交单 #{offer.saleId}
+            </span>
           )}
           <button
             onClick={() => handleDeleteOffer(offer.id)}
