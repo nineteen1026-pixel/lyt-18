@@ -281,10 +281,58 @@ export default function Sales() {
             >
               <option value="">请选择物品</option>
               {availableItems.map((item) => (
-                <option key={item.id} value={item.id}>{item.name} ({formatCurrency(item.buyPrice)})</option>
+                <option key={item.id} value={item.id}>
+                  {item.name} (综合成本 {formatCurrency(item.totalCost)}
+                  {item.totalCosts > 0 && `，附加 ${formatCurrency(item.totalCosts)}`})
+                </option>
               ))}
             </select>
           </div>
+          {formData.itemId && items.find(i => i.id === Number(formData.itemId)) && (() => {
+            const selectedItem = items.find(i => i.id === Number(formData.itemId))!;
+            const breakdown = selectedItem.costsBreakdown || {
+              shipping: 0, repair: 0, accessory: 0, cleaning: 0, other: 0,
+            };
+            const costLabels: Array<[keyof typeof breakdown, string, string]> = [
+              ['shipping', '运费', 'bg-amber-500'],
+              ['repair', '维修', 'bg-orange-500'],
+              ['accessory', '配件', 'bg-violet-500'],
+              ['cleaning', '清洁', 'bg-teal-500'],
+              ['other', '其他', 'bg-slate-500'],
+            ];
+            return (
+              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                <p className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-2">
+                  <Wallet className="w-4 h-4" />
+                  综合成本构成
+                </p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">买入价</span>
+                    <span className="font-medium text-primary-600">{formatCurrency(selectedItem.buyPrice)}</span>
+                  </div>
+                  {costLabels.map(([key, label, _color]) => (
+                    breakdown[key] > 0 && (
+                      <div key={key} className="flex justify-between items-center">
+                        <span className="text-slate-500">{label}</span>
+                        <span className="text-slate-700">+{formatCurrency(breakdown[key])}</span>
+                      </div>
+                    )
+                  ))}
+                  <div className="border-t border-slate-200 my-2"></div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-slate-700">综合成本总计</span>
+                    <span className="font-bold text-rose-600">{formatCurrency(selectedItem.totalCost)}</span>
+                  </div>
+                  {selectedItem.totalCosts > 0 && (
+                    <div className="text-xs text-slate-400 text-right">
+                      附加成本占比 {Math.round(selectedItem.totalCosts / selectedItem.totalCost * 100)}%
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
           {formData.itemId && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">关联挂售（可选）</label>
@@ -380,6 +428,56 @@ export default function Sales() {
               placeholder="交易过程中的特殊情况..."
             />
           </div>
+          {formData.itemId && formData.salePrice && items.find(i => i.id === Number(formData.itemId)) && (() => {
+            const selectedItem = items.find(i => i.id === Number(formData.itemId))!;
+            const salePrice = Number(formData.salePrice);
+            const shippingFee = formData.shippingFee ? Number(formData.shippingFee) : 0;
+            const netIncome = salePrice - shippingFee;
+            const netProfit = netIncome - selectedItem.totalCost;
+            const grossMargin = salePrice > 0 ? (netProfit / salePrice) * 100 : 0;
+            return (
+              <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg p-4 border border-emerald-200">
+                <p className="text-sm font-medium text-emerald-800 mb-3 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4" />
+                  收益预览
+                </p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">成交价</span>
+                    <span className="font-medium text-slate-700">{formatCurrency(salePrice)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">成交运费</span>
+                    <span className="text-slate-600">- {formatCurrency(shippingFee)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">净收入</span>
+                    <span className="font-medium text-emerald-600">{formatCurrency(netIncome)}</span>
+                  </div>
+                  <div className="border-t border-emerald-200 my-2"></div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">综合成本</span>
+                    <span className="text-slate-700 font-medium">- {formatCurrency(selectedItem.totalCost)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1">
+                    <span className="font-medium text-slate-700">净利润</span>
+                    <span className={`font-bold text-lg ${getProfitColor(netProfit)}`}>
+                      {formatProfit(netProfit)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 flex items-center gap-1">
+                      <Percent className="w-3 h-3" />
+                      毛利率
+                    </span>
+                    <span className={`font-bold ${getProfitColor(grossMargin)}`}>
+                      {grossMargin > 0 ? '+' : ''}{grossMargin.toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={() => setModalOpen(false)} className="btn-secondary flex-1">
               取消
