@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Tag, Package, Plus, Trash2, Clock, DollarSign, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Calendar, Tag, Package, Plus, Trash2, Clock, DollarSign, TrendingUp, Wallet, Wrench, Truck, Sparkles, ShoppingCart, Percent } from 'lucide-react';
 import { api } from '../../utils/api';
-import { STATUS_LABELS, STATUS_COLORS, PLATFORM_LABELS, PLATFORM_COLORS, LISTING_STATUS_LABELS } from '../../../shared/types';
+import { STATUS_LABELS, STATUS_COLORS, PLATFORM_LABELS, PLATFORM_COLORS, LISTING_STATUS_LABELS, COST_TYPE_LABELS, COST_TYPE_COLORS, type ItemCost, type CostType } from '../../../shared/types';
 import { formatCurrency, formatDate, formatDays, getProgressColor, getProfitColor, formatProfit } from '../../utils/format';
 import Modal from '../../components/Modal/Modal';
 
@@ -18,10 +18,24 @@ interface ItemDetailData {
   holdingDays: number;
   currentValue: number;
   returnProgress: number;
+  totalCosts: number;
+  costsBreakdown: Record<CostType, number>;
+  totalCost: number;
+  grossMargin?: number;
+  netProfit?: number;
+  costs?: ItemCost[];
   sale?: any;
   usageRecords: any[];
   listings: any[];
 }
+
+const COST_TYPE_ICONS: Record<CostType, typeof Truck> = {
+  shipping: Truck,
+  repair: Wrench,
+  accessory: ShoppingCart,
+  cleaning: Sparkles,
+  other: Wallet,
+};
 
 export default function ItemDetail() {
   const { id } = useParams();
@@ -31,6 +45,7 @@ export default function ItemDetail() {
   const [listingModalOpen, setListingModalOpen] = useState(false);
   const [saleModalOpen, setSaleModalOpen] = useState(false);
   const [usageModalOpen, setUsageModalOpen] = useState(false);
+  const [costModalOpen, setCostModalOpen] = useState(false);
   const [listingForm, setListingForm] = useState({
     platform: 'xianyu',
     price: '',
@@ -48,6 +63,12 @@ export default function ItemDetail() {
   });
   const [usageForm, setUsageForm] = useState({
     content: '',
+    date: new Date().toISOString().split('T')[0],
+  });
+  const [costForm, setCostForm] = useState({
+    type: 'shipping' as CostType,
+    amount: '',
+    note: '',
     date: new Date().toISOString().split('T')[0],
   });
 
@@ -118,6 +139,41 @@ export default function ItemDetail() {
     }
   };
 
+  const handleAddCost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!item) return;
+    try {
+      await api.items.addCost(item.id, {
+        type: costForm.type,
+        amount: Number(costForm.amount),
+        note: costForm.note,
+        date: costForm.date,
+      });
+      setCostModalOpen(false);
+      setCostForm({
+        type: 'shipping',
+        amount: '',
+        note: '',
+        date: new Date().toISOString().split('T')[0],
+      });
+      fetchItemDetail();
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  };
+
+  const handleDeleteCost = async (costId: number) => {
+    if (!item) return;
+    if (confirm('确定要删除这条成本记录吗？')) {
+      try {
+        await api.items.deleteCost(item.id, costId);
+        fetchItemDetail();
+      } catch (err) {
+        alert((err as Error).message);
+      }
+    }
+  };
+
   const handleDeleteListing = async (listingId: number) => {
     if (confirm('确定要删除这条挂售记录吗？')) {
       try {
@@ -146,6 +202,8 @@ export default function ItemDetail() {
   }
 
   const imageUrl = item.image || `https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=${encodeURIComponent(item.name + ' ' + item.category)}&image_size=square`;
+
+  const costEntries = Object.entries(item.costsBreakdown).filter(([, v]) => v > 0);
 
   return (
     <div className="space-y-6">
@@ -184,6 +242,24 @@ export default function ItemDetail() {
                 <p className="text-xl font-bold text-primary-600">{formatCurrency(item.buyPrice)}</p>
               </div>
               <div>
+                <p className="text-xs text-slate-500 mb-1">附加成本</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-lg font-bold text-rose-500">{formatCurrency(item.totalCosts)}</p>
+                  {item.totalCosts > 0 && (
+                    <span className="text-xs text-slate-500">
+                      +{Math.round((item.totalCosts / item.buyPrice) * 100)}%
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="pt-2 border-t border-slate-100">
+                <p className="text-xs text-slate-500 mb-1">综合成本总计</p>
+                <p className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                  <Wallet className="w-5 h-5 text-slate-600" />
+                  {formatCurrency(item.totalCost)}
+                </p>
+              </div>
+              <div>
                 <p className="text-xs text-slate-500 mb-1">持有时长</p>
                 <p className="text-lg font-bold text-slate-800 flex items-center gap-2">
                   <Clock className="w-4 h-4" />
@@ -211,37 +287,116 @@ export default function ItemDetail() {
                     style={{ width: `${item.returnProgress}%` }}
                   />
                 </div>
+                <p className="text-xs text-slate-400 mt-1">基于综合成本 {formatCurrency(item.totalCost)} 计算</p>
               </div>
             </div>
           </div>
 
           {item.sale && (
             <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
-              <p className="text-sm font-medium text-emerald-700 mb-2">已成交</p>
+              <p className="text-sm font-medium text-emerald-700 mb-3 flex items-center gap-1">
+                <TrendingUp className="w-4 h-4" />
+                已成交
+              </p>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-emerald-600">成交价</span>
                   <span className="font-bold text-emerald-700">{formatCurrency(item.sale.salePrice)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-emerald-600">运费</span>
+                  <span className="text-emerald-600">成交运费</span>
                   <span className="text-emerald-700">{formatCurrency(item.sale.shippingFee || 0)}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-emerald-200">
-                  <span className="text-emerald-600">实际收益</span>
+                  <span className="text-emerald-600">实际收入</span>
                   <span className="font-bold text-emerald-700">
                     {formatCurrency(item.sale.salePrice - (item.sale.shippingFee || 0))}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-emerald-600">利润</span>
-                  <span className={`font-bold ${getProfitColor(item.sale.salePrice - (item.sale.shippingFee || 0) - item.buyPrice)}`}>
-                    {formatProfit(item.sale.salePrice - (item.sale.shippingFee || 0) - item.buyPrice)}
+                  <span className="text-emerald-600">买入成本</span>
+                  <span className="text-emerald-700">{formatCurrency(item.buyPrice)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-emerald-600">附加成本</span>
+                  <span className="text-emerald-700">{formatCurrency(item.totalCosts)}</span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-emerald-200">
+                  <span className="text-emerald-600 font-medium">净利润</span>
+                  <span className={`font-bold text-lg ${getProfitColor(item.netProfit ?? 0)}`}>
+                    {formatProfit(item.netProfit ?? 0)}
                   </span>
                 </div>
+                {item.grossMargin !== undefined && (
+                  <div className="flex justify-between items-center pt-2 border-t border-emerald-200">
+                    <span className="text-emerald-600 font-medium flex items-center gap-1">
+                      <Percent className="w-3 h-3" />
+                      毛利率
+                    </span>
+                    <span className={`font-bold text-lg ${getProfitColor(item.grossMargin)}`}>
+                      {item.grossMargin > 0 ? '+' : ''}{item.grossMargin}%
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}
+
+          <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-slate-800 text-sm">成本构成</h3>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded bg-primary-500"></div>
+                  <span className="text-slate-600">买入价格</span>
+                </div>
+                <span className="font-medium text-slate-700">
+                  {formatCurrency(item.buyPrice)}
+                  <span className="text-xs text-slate-400 ml-1">
+                    ({item.totalCost > 0 ? Math.round((item.buyPrice / item.totalCost) * 100) : 0}%)
+                  </span>
+                </span>
+              </div>
+              {costEntries.map(([type, amount]) => {
+                const Icon = COST_TYPE_ICONS[type as CostType];
+                return (
+                  <div key={type} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded" style={{ backgroundColor: COST_TYPE_COLORS[type as CostType] }}></div>
+                      <span className="text-slate-600 flex items-center gap-1">
+                        <Icon className="w-3 h-3" />
+                        {COST_TYPE_LABELS[type as CostType]}
+                      </span>
+                    </div>
+                    <span className="font-medium text-slate-700">
+                      {formatCurrency(amount)}
+                      <span className="text-xs text-slate-400 ml-1">
+                        ({item.totalCost > 0 ? Math.round((amount / item.totalCost) * 100) : 0}%)
+                      </span>
+                    </span>
+                  </div>
+                );
+              })}
+              <div className="h-4 mt-3 rounded-full bg-slate-100 overflow-hidden flex">
+                <div
+                  className="h-full bg-primary-500"
+                  style={{ width: `${item.totalCost > 0 ? (item.buyPrice / item.totalCost) * 100 : 0}%` }}
+                />
+                {costEntries.map(([type, amount]) => (
+                  <div
+                    key={type}
+                    className="h-full"
+                    style={{
+                      width: `${item.totalCost > 0 ? (amount / item.totalCost) * 100 : 0}%`,
+                      backgroundColor: COST_TYPE_COLORS[type as CostType],
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
 
           <div className="flex gap-2">
             {item.status !== 'sold' && (
@@ -272,6 +427,59 @@ export default function ItemDetail() {
               <p className="text-slate-600 text-sm">{item.description}</p>
             </div>
           )}
+
+          <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                <Wallet className="w-5 h-5 text-rose-600" />
+                附加成本明细
+              </h3>
+              <button
+                onClick={() => setCostModalOpen(true)}
+                className="text-sm text-rose-600 hover:text-rose-700 font-medium flex items-center gap-1"
+              >
+                <Plus className="w-4 h-4" />
+                添加成本
+              </button>
+            </div>
+            {!item.costs || item.costs.length === 0 ? (
+              <p className="text-sm text-slate-500 text-center py-4">暂无附加成本记录</p>
+            ) : (
+              <div className="space-y-3">
+                {item.costs.map((cost) => {
+                  const Icon = COST_TYPE_ICONS[cost.type];
+                  return (
+                    <div key={cost.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
+                          style={{ backgroundColor: COST_TYPE_COLORS[cost.type] }}
+                        >
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-slate-800">
+                            {COST_TYPE_LABELS[cost.type]}
+                            <span className="text-rose-600 ml-3 font-bold">{formatCurrency(cost.amount)}</span>
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {formatDate(cost.date)}
+                            {cost.note && ` · ${cost.note}`}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteCost(cost.id)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
             <div className="flex items-center justify-between mb-4">
@@ -420,7 +628,7 @@ export default function ItemDetail() {
                   setSaleForm({ ...saleForm, listingId: e.target.value });
                   const selected = item.listings.find(l => l.id === Number(e.target.value));
                   if (selected) {
-                    setSaleForm(prev => ({ ...prev, platform: selected.platform, price: String(selected.price) }));
+                    setSaleForm(prev => ({ ...prev, platform: selected.platform, salePrice: String(selected.price) }));
                   }
                 }}
                 className="input-field"
@@ -471,7 +679,7 @@ export default function ItemDetail() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">运费</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">成交运费</label>
               <input
                 type="number"
                 value={saleForm.shippingFee}
@@ -541,6 +749,63 @@ export default function ItemDetail() {
             </button>
             <button type="submit" className="btn-primary flex-1">
               添加记录
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={costModalOpen} onClose={() => setCostModalOpen(false)} title="添加附加成本">
+        <form onSubmit={handleAddCost} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">成本类型</label>
+            <select
+              value={costForm.type}
+              onChange={(e) => setCostForm({ ...costForm, type: e.target.value as CostType })}
+              className="input-field"
+            >
+              {Object.entries(COST_TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">金额</label>
+            <input
+              type="number"
+              value={costForm.amount}
+              onChange={(e) => setCostForm({ ...costForm, amount: e.target.value })}
+              className="input-field"
+              placeholder="0.00"
+              min="0"
+              step="0.01"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">日期</label>
+            <input
+              type="date"
+              value={costForm.date}
+              onChange={(e) => setCostForm({ ...costForm, date: e.target.value })}
+              className="input-field"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">备注</label>
+            <textarea
+              value={costForm.note}
+              onChange={(e) => setCostForm({ ...costForm, note: e.target.value })}
+              className="input-field min-h-[60px]"
+              placeholder="费用说明、商家信息等..."
+            />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={() => setCostModalOpen(false)} className="btn-secondary flex-1">
+              取消
+            </button>
+            <button type="submit" className="btn-primary flex-1" style={{ backgroundColor: '#E11D48' }}>
+              确认添加
             </button>
           </div>
         </form>

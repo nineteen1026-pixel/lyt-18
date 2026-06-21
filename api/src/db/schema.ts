@@ -52,11 +52,24 @@ export function initSchema() {
       FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS item_costs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id INTEGER NOT NULL,
+      type VARCHAR(50) NOT NULL,
+      amount DECIMAL(10,2) NOT NULL,
+      note TEXT,
+      date DATE NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
     CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
     CREATE INDEX IF NOT EXISTS idx_listings_platform ON listings(platform);
     CREATE INDEX IF NOT EXISTS idx_listings_status ON listings(status);
     CREATE INDEX IF NOT EXISTS idx_sales_platform ON sales(platform);
     CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date);
+    CREATE INDEX IF NOT EXISTS idx_item_costs_item ON item_costs(item_id);
+    CREATE INDEX IF NOT EXISTS idx_item_costs_type ON item_costs(type);
   `);
 }

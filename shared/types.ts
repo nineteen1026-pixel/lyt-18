@@ -4,6 +4,24 @@ export type Platform = 'xianyu' | 'zhuanzhuan' | 'xiaohongshu' | 'pinduoduo' | '
 
 export type ListingStatus = 'active' | 'sold' | 'cancelled';
 
+export type CostType = 'shipping' | 'repair' | 'accessory' | 'cleaning' | 'other';
+
+export const COST_TYPE_LABELS: Record<CostType, string> = {
+  shipping: '运费',
+  repair: '维修',
+  accessory: '配件',
+  cleaning: '清洁保养',
+  other: '其他',
+};
+
+export const COST_TYPE_COLORS: Record<CostType, string> = {
+  shipping: '#3B82F6',
+  repair: '#EF4444',
+  accessory: '#8B5CF6',
+  cleaning: '#10B981',
+  other: '#6B7280',
+};
+
 export interface Item {
   id: number;
   name: string;
@@ -17,10 +35,26 @@ export interface Item {
   updatedAt: string;
 }
 
+export interface ItemCost {
+  id: number;
+  itemId: number;
+  type: CostType;
+  amount: number;
+  note?: string;
+  date: string;
+  createdAt: string;
+}
+
 export interface ItemWithStats extends Item {
   holdingDays: number;
   currentValue: number;
   returnProgress: number;
+  totalCosts: number;
+  costsBreakdown: Record<CostType, number>;
+  totalCost: number;
+  grossMargin?: number;
+  netProfit?: number;
+  costs?: ItemCost[];
   sale?: Sale;
 }
 
@@ -66,7 +100,10 @@ export interface SaleWithItem extends Sale {
   itemName: string;
   itemImage?: string;
   buyPrice: number;
+  totalCosts: number;
+  totalCost: number;
   profit: number;
+  grossMargin?: number;
 }
 
 export interface StatsSummary {
@@ -76,9 +113,12 @@ export interface StatsSummary {
   soldItems: number;
   totalIncome: number;
   totalExpense: number;
+  totalCosts: number;
+  soldCosts: number;
   netProfit: number;
   returnRate: number;
   avgHoldingDays: number;
+  avgGrossMargin: number;
 }
 
 export interface MonthlyData {

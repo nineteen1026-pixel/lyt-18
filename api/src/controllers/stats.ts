@@ -8,12 +8,21 @@ export const getSummary = (req: Request, res: Response) => {
   const listingItems = (db.prepare("SELECT COUNT(*) as count FROM items WHERE status = 'listing'").get() as { count: number }).count;
   const soldItems = (db.prepare("SELECT COUNT(*) as count FROM items WHERE status = 'sold'").get() as { count: number }).count;
 
-  const totalIncome = (db.prepare('SELECT COALESCE(SUM(sale_price - shipping_fee), 0) as total FROM sales').get() as { total: number }).total;
+  const totalIncome = (db.prepare('SELECT COALESCE(SUM(sale_price - COALESCE(shipping_fee, 0)), 0) as total FROM sales').get() as { total: number }).total;
   const totalExpense = (db.prepare('SELECT COALESCE(SUM(buy_price), 0) as total FROM items').get() as { total: number }).total;
   const soldExpense = (db.prepare("SELECT COALESCE(SUM(buy_price), 0) as total FROM items WHERE status = 'sold'").get() as { total: number }).total;
 
-  const netProfit = totalIncome - soldExpense;
-  const returnRate = soldExpense > 0 ? Math.round((totalIncome / soldExpense) * 100) : 0;
+  const totalCosts = (db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM item_costs').get() as { total: number }).total;
+  const soldCosts = (db.prepare(`
+    SELECT COALESCE(SUM(c.amount), 0) as total
+    FROM item_costs c
+    JOIN items i ON c.item_id = i.id
+    WHERE i.status = 'sold'
+  `).get() as { total: number }).total;
+
+  const netProfit = totalIncome - soldExpense - soldCosts;
+  const totalSoldCost = soldExpense + soldCosts;
+  const returnRate = totalSoldCost > 0 ? Math.round((totalIncome / totalSoldCost) * 100) : 0;
 
   const soldItemsWithDates = db.prepare(`
     SELECT i.buy_date, s.sale_date
@@ -32,6 +41,28 @@ export const getSummary = (req: Request, res: Response) => {
     avgHoldingDays = Math.round(totalDays / soldItemsWithDates.length);
   }
 
+  const soldGrossMargins = db.prepare(`
+    SELECT 
+      (s.sale_price - COALESCE(s.shipping_fee, 0) - i.buy_price - COALESCE(c.total_costs, 0)) as profit,
+      s.sale_price as salePrice
+    FROM sales s
+    JOIN items i ON s.item_id = i.id
+    LEFT JOIN (
+      SELECT item_id, COALESCE(SUM(amount), 0) as total_costs
+      FROM item_costs
+      GROUP BY item_id
+    ) c ON i.id = c.item_id
+    WHERE i.status = 'sold' AND s.sale_price > 0
+  `).all() as { profit: number; salePrice: number }[];
+
+  let avgGrossMargin = 0;
+  if (soldGrossMargins.length > 0) {
+    const totalMargin = soldGrossMargins.reduce((sum, item) => {
+      return sum + Math.round((item.profit / item.salePrice) * 100);
+    }, 0);
+    avgGrossMargin = Math.round(totalMargin / soldGrossMargins.length);
+  }
+
   const summary: StatsSummary = {
     totalItems,
     holdingItems,
@@ -39,9 +70,12 @@ export const getSummary = (req: Request, res: Response) => {
     soldItems,
     totalIncome,
     totalExpense,
+    totalCosts,
+    soldCosts,
     netProfit,
     returnRate,
     avgHoldingDays,
+    avgGrossMargin,
   };
 
   res.json({
@@ -55,7 +89,7 @@ export const getMonthlyData = (req: Request, res: Response) => {
   const months = db.prepare(`
     SELECT 
       strftime('%Y-%m', sale_date) as month,
-      SUM(sale_price - shipping_fee) as income
+      SUM(sale_price - COALESCE(shipping_fee, 0)) as income
     FROM sales
     GROUP BY strftime('%Y-%m', sale_date)
     ORDER BY month
@@ -70,15 +104,29 @@ export const getMonthlyData = (req: Request, res: Response) => {
     ORDER BY month
   `).all() as { month: string; expense: number }[];
 
-  const monthMap = new Map<string, { income: number; expense: number }>();
+  const costMonths = db.prepare(`
+    SELECT 
+      strftime('%Y-%m', date) as month,
+      SUM(amount) as costs
+    FROM item_costs
+    GROUP BY strftime('%Y-%m', date)
+    ORDER BY month
+  `).all() as { month: string; costs: number }[];
+
+  const monthMap = new Map<string, { income: number; expense: number; costs: number }>();
 
   months.forEach((m) => {
-    monthMap.set(m.month, { income: m.income, expense: 0 });
+    monthMap.set(m.month, { income: m.income, expense: 0, costs: 0 });
   });
 
   expenseMonths.forEach((m) => {
-    const existing = monthMap.get(m.month) || { income: 0, expense: 0 };
+    const existing = monthMap.get(m.month) || { income: 0, expense: 0, costs: 0 };
     monthMap.set(m.month, { ...existing, expense: m.expense });
+  });
+
+  costMonths.forEach((m) => {
+    const existing = monthMap.get(m.month) || { income: 0, expense: 0, costs: 0 };
+    monthMap.set(m.month, { ...existing, costs: (existing.costs || 0) + m.costs });
   });
 
   const sortedMonths = Array.from(monthMap.entries())
@@ -87,8 +135,8 @@ export const getMonthlyData = (req: Request, res: Response) => {
     .map(([month, data]) => ({
       month,
       income: data.income,
-      expense: data.expense,
-      profit: data.income - data.expense,
+      expense: data.expense + (data.costs || 0),
+      profit: data.income - data.expense - (data.costs || 0),
     })) as MonthlyData[];
 
   res.json({
@@ -101,11 +149,11 @@ export const getMonthlyData = (req: Request, res: Response) => {
 export const getPlatformData = (req: Request, res: Response) => {
   const data = db.prepare(`
     SELECT 
-      platform,
+      s.platform,
       COUNT(*) as count,
-      SUM(sale_price - shipping_fee) as amount
-    FROM sales
-    GROUP BY platform
+      SUM(s.sale_price - COALESCE(s.shipping_fee, 0)) as amount
+    FROM sales s
+    GROUP BY s.platform
     ORDER BY amount DESC
   `).all() as PlatformData[];
 
@@ -121,9 +169,19 @@ export const getCategoryData = (req: Request, res: Response) => {
     SELECT 
       i.category,
       COUNT(*) as count,
-      SUM(s.sale_price - COALESCE(s.shipping_fee, 0) - i.buy_price) as profit
+      SUM(
+        s.sale_price 
+        - COALESCE(s.shipping_fee, 0) 
+        - i.buy_price 
+        - COALESCE(c.total_costs, 0)
+      ) as profit
     FROM items i
     JOIN sales s ON i.id = s.item_id
+    LEFT JOIN (
+      SELECT item_id, COALESCE(SUM(amount), 0) as total_costs
+      FROM item_costs
+      GROUP BY item_id
+    ) c ON i.id = c.item_id
     WHERE i.status = 'sold'
     GROUP BY i.category
     ORDER BY profit DESC

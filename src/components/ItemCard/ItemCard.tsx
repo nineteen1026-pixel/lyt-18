@@ -1,8 +1,8 @@
 import { useNavigate } from 'react-router-dom';
-import { Calendar, TrendingUp, Package } from 'lucide-react';
+import { Calendar, TrendingUp, Package, Wallet, Percent } from 'lucide-react';
 import type { ItemWithStats } from '../../../shared/types';
 import { STATUS_LABELS, STATUS_COLORS } from '../../../shared/types';
-import { formatCurrency, formatDays, getProgressColor } from '../../utils/format';
+import { formatCurrency, formatDays, getProgressColor, getProfitColor, formatProfit } from '../../utils/format';
 
 interface ItemCardProps {
   item: ItemWithStats;
@@ -48,8 +48,15 @@ export default function ItemCard({ item, index }: ItemCardProps) {
             <Calendar className="w-4 h-4" />
             <span>{formatDays(item.holdingDays)}</span>
           </div>
-          <div className="font-bold text-primary-600">
-            {formatCurrency(item.buyPrice)}
+          <div className="text-right">
+            <div className="font-bold text-primary-600">
+              {formatCurrency(item.totalCost)}
+            </div>
+            {item.totalCosts > 0 && (
+              <div className="text-xs text-rose-500">
+                含附加 {formatCurrency(item.totalCosts)}
+              </div>
+            )}
           </div>
         </div>
         <div className="space-y-1">
@@ -74,7 +81,7 @@ export default function ItemCard({ item, index }: ItemCardProps) {
           </div>
         </div>
         {item.sale && (
-          <div className="mt-3 pt-3 border-t border-slate-100">
+          <div className="mt-3 pt-3 border-t border-slate-100 space-y-1">
             <div className="flex items-center justify-between text-xs">
               <span className="text-slate-500 flex items-center gap-1">
                 <Package className="w-3 h-3" />
@@ -84,6 +91,26 @@ export default function ItemCard({ item, index }: ItemCardProps) {
                 {formatCurrency(item.sale.salePrice)}
               </span>
             </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-500 flex items-center gap-1">
+                <Wallet className="w-3 h-3" />
+                净利润
+              </span>
+              <span className={`font-bold ${getProfitColor(item.netProfit ?? 0)}`}>
+                {formatProfit(item.netProfit ?? 0)}
+              </span>
+            </div>
+            {item.grossMargin !== undefined && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500 flex items-center gap-1">
+                  <Percent className="w-3 h-3" />
+                  毛利率
+                </span>
+                <span className={`font-bold ${getProfitColor(item.grossMargin)}`}>
+                  {item.grossMargin > 0 ? '+' : ''}{item.grossMargin}%
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>

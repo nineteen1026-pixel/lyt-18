@@ -14,7 +14,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import { DollarSign, TrendingUp, Clock, Package, ShoppingBag, Tag, Percent } from 'lucide-react';
+import { DollarSign, TrendingUp, Clock, Package, ShoppingBag, Tag, Percent, Wallet } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '../../../shared/types';
 import { formatCurrency, formatProfit, getProfitColor } from '../../utils/format';
@@ -45,7 +45,7 @@ export default function Stats() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-800">统计分析</h1>
-        <p className="text-slate-500 text-sm">查看交易数据和收益分析</p>
+        <p className="text-slate-500 text-sm">查看交易数据和收益分析，净利润已扣除附加成本</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -75,11 +75,18 @@ export default function Stats() {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="总支出"
+          title="总支出（买入）"
           value={stats.summary?.totalExpense || 0}
           icon={DollarSign}
+          isCurrency
+          color="text-primary-600"
+        />
+        <StatCard
+          title="总附加成本"
+          value={stats.summary?.totalCosts || 0}
+          icon={Wallet}
           isCurrency
           color="text-rose-600"
         />
@@ -99,12 +106,18 @@ export default function Stats() {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard
           title="回本率"
           value={`${stats.summary?.returnRate || 0}%`}
           icon={Percent}
           color={stats.summary && stats.summary.returnRate >= 100 ? 'text-emerald-600' : 'text-primary-600'}
+        />
+        <StatCard
+          title="平均毛利率"
+          value={`${stats.summary?.avgGrossMargin || 0}%`}
+          icon={Percent}
+          color={getProfitColor(stats.summary?.avgGrossMargin || 0)}
         />
         <StatCard
           title="平均回本周期"
@@ -116,7 +129,7 @@ export default function Stats() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm">
-          <h3 className="font-bold text-slate-800 mb-4">月度收支趋势</h3>
+          <h3 className="font-bold text-slate-800 mb-4">月度收支趋势（含附加成本）</h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={stats.monthly} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -150,7 +163,7 @@ export default function Stats() {
                 <Area
                   type="monotone"
                   dataKey="expense"
-                  name="支出"
+                  name="支出(含附加成本)"
                   stroke="#EC4899"
                   fillOpacity={1}
                   fill="url(#colorExpense)"
@@ -200,7 +213,7 @@ export default function Stats() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm">
-          <h3 className="font-bold text-slate-800 mb-4">月度利润</h3>
+          <h3 className="font-bold text-slate-800 mb-4">月度净利润（扣除附加成本）</h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={stats.monthly} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -208,12 +221,12 @@ export default function Stats() {
                 <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#64748B' }} />
                 <YAxis tick={{ fontSize: 12, fill: '#64748B' }} />
                 <Tooltip
-                  formatter={(value: number) => [formatProfit(value), '利润']}
+                  formatter={(value: number) => [formatProfit(value), '净利润']}
                   contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0' }}
                 />
                 <Bar
                   dataKey="profit"
-                  name="利润"
+                  name="净利润"
                   radius={[4, 4, 0, 0]}
                   fill="#0F766E"
                 >
@@ -230,7 +243,7 @@ export default function Stats() {
         </div>
 
         <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm">
-          <h3 className="font-bold text-slate-800 mb-4">分类收益对比</h3>
+          <h3 className="font-bold text-slate-800 mb-4">分类收益对比（扣除附加成本）</h3>
           <div className="h-72">
             {stats.category.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -248,12 +261,12 @@ export default function Stats() {
                     width={80}
                   />
                   <Tooltip
-                    formatter={(value: number) => [formatProfit(value), '利润']}
+                    formatter={(value: number) => [formatProfit(value), '净利润']}
                     contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0' }}
                   />
                   <Bar
                     dataKey="profit"
-                    name="利润"
+                    name="净利润"
                     radius={[0, 4, 4, 0]}
                   >
                     {stats.category.map((entry, index) => (
@@ -282,7 +295,7 @@ export default function Stats() {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">平台</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">成交笔数</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">成交金额</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">成交净额</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Search, TrendingUp, TrendingDown } from 'lucide-react';
+import { Plus, Trash2, Search, TrendingUp, TrendingDown, Wallet, Percent } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { api } from '../../utils/api';
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '../../../shared/types';
@@ -42,6 +42,10 @@ export default function Sales() {
 
   const totalProfit = sales.reduce((sum, s) => sum + s.profit, 0);
   const totalIncome = sales.reduce((sum, s) => sum + (s.salePrice - (s.shippingFee || 0)), 0);
+  const totalCosts = sales.reduce((sum, s) => sum + s.totalCost, 0);
+  const avgGrossMargin = sales.length > 0
+    ? Math.round(sales.reduce((sum, s) => sum + (s.grossMargin || 0), 0) / sales.length)
+    : 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,7 +89,7 @@ export default function Sales() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">成交记录</h1>
-          <p className="text-slate-500 text-sm">查看和管理所有成交记录</p>
+          <p className="text-slate-500 text-sm">查看和管理所有成交记录，净利润已扣除附加成本</p>
         </div>
         <button onClick={() => setModalOpen(true)} className="btn-primary flex items-center gap-2">
           <Plus className="w-5 h-5" />
@@ -93,7 +97,7 @@ export default function Sales() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>
@@ -119,10 +123,27 @@ export default function Sales() {
         <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-500 font-medium">总利润</p>
-              <p className={`text-2xl font-bold mt-1 ${getProfitColor(totalProfit)}`}>
-                {formatProfit(totalProfit)}
-              </p>
+              <p className="text-sm text-slate-500 font-medium">综合成本</p>
+              <p className="text-2xl font-bold text-rose-600 mt-1">{formatCurrency(totalCosts)}</p>
+            </div>
+            <div className="p-3 rounded-xl bg-rose-50">
+              <Wallet className="w-6 h-6 text-rose-600" />
+            </div>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-slate-500 font-medium">净利润</p>
+              <div>
+                <p className={`text-2xl font-bold mt-1 ${getProfitColor(totalProfit)}`}>
+                  {formatProfit(totalProfit)}
+                </p>
+                <p className={`text-xs mt-1 ${getProfitColor(avgGrossMargin)} flex items-center gap-1`}>
+                  <Percent className="w-3 h-3" />
+                  平均毛利率 {avgGrossMargin > 0 ? '+' : ''}{avgGrossMargin}%
+                </p>
+              </div>
             </div>
             <div className={`p-3 rounded-xl ${totalProfit >= 0 ? 'bg-emerald-50' : 'bg-rose-50'}`}>
               {totalProfit >= 0 ? (
@@ -168,9 +189,10 @@ export default function Sales() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">物品</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">平台</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">成交价</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">利润</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">综合成本</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">净利润</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">毛利率</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">成交日期</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">买家</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">操作</th>
               </tr>
             </thead>
@@ -184,7 +206,10 @@ export default function Sales() {
                       </div>
                       <div>
                         <div className="font-medium text-slate-800">{sale.itemName}</div>
-                        <div className="text-xs text-slate-500">成本 {formatCurrency(sale.buyPrice)}</div>
+                        <div className="text-xs text-slate-500">
+                          买入 {formatCurrency(sale.buyPrice)}
+                          {sale.totalCosts > 0 && ` · 附加 ${formatCurrency(sale.totalCosts)}`}
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -203,15 +228,25 @@ export default function Sales() {
                     ) : null}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="font-bold text-rose-600">{formatCurrency(sale.totalCost)}</div>
+                    {sale.totalCosts > 0 && (
+                      <div className="text-xs text-slate-500">+{formatCurrency(sale.totalCosts)} 附加</div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`font-bold ${getProfitColor(sale.profit)}`}>
                       {formatProfit(sale.profit)}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                    {formatDate(sale.saleDate)}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {sale.grossMargin !== undefined && (
+                      <span className={`font-medium text-sm ${getProfitColor(sale.grossMargin)}`}>
+                        {sale.grossMargin > 0 ? '+' : ''}{sale.grossMargin}%
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                    {sale.buyerInfo || '-'}
+                    {formatDate(sale.saleDate)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">
                     <button
@@ -314,7 +349,7 @@ export default function Sales() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">运费</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">成交运费</label>
               <input
                 type="number"
                 value={formData.shippingFee}

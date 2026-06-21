@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
-import type { Item, UsageRecord, ItemWithStats, Sale } from '../../../shared/types.js';
+import type { Item, UsageRecord, ItemWithStats, Sale, ItemCost, CostType } from '../../../shared/types.js';
+
+const COST_TYPES: CostType[] = ['shipping', 'repair', 'accessory', 'cleaning', 'other'];
 
 function calculateHoldingDays(buyDate: string, saleDate?: string): number {
   const start = new Date(buyDate);
@@ -9,16 +11,44 @@ function calculateHoldingDays(buyDate: string, saleDate?: string): number {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
 
-function calculateReturnProgress(item: Item, sale?: Sale): number {
+function getItemCosts(itemId: number): { costs: ItemCost[]; totalCosts: number; costsBreakdown: Record<CostType, number> } {
+  const costRows = db.prepare(`
+    SELECT id, item_id AS itemId, type, amount, note, date, created_at AS createdAt
+    FROM item_costs WHERE item_id = ? ORDER BY date DESC, created_at DESC
+  `).all(itemId) as ItemCost[];
+
+  const costsBreakdown: Record<CostType, number> = {
+    shipping: 0,
+    repair: 0,
+    accessory: 0,
+    cleaning: 0,
+    other: 0,
+  };
+
+  let totalCosts = 0;
+  costRows.forEach((c) => {
+    totalCosts += Number(c.amount);
+    if (COST_TYPES.includes(c.type)) {
+      costsBreakdown[c.type] += Number(c.amount);
+    } else {
+      costsBreakdown.other += Number(c.amount);
+    }
+  });
+
+  return { costs: costRows, totalCosts, costsBreakdown };
+}
+
+function calculateReturnProgress(item: Item, totalCosts: number, sale?: Sale): number {
   if (!sale) {
     return 0;
   }
+  const totalCost = item.buyPrice + totalCosts;
+  if (totalCost <= 0) return 0;
   const netIncome = sale.salePrice - (sale.shippingFee || 0);
-  return Math.min(100, Math.round((netIncome / item.buyPrice) * 100));
+  return Math.min(100, Math.round((netIncome / totalCost) * 100));
 }
 
-
-function getItemWithStats(item: Item): ItemWithStats {
+function getItemWithStats(item: Item, includeCosts = false): ItemWithStats {
   const saleRaw = db.prepare(`
     SELECT id, item_id AS itemId, listing_id AS listingId, platform, sale_price AS salePrice, sale_date AS saleDate, shipping_fee AS shippingFee, buyer_info AS buyerInfo, note, created_at AS createdAt
     FROM sales WHERE item_id = ?
@@ -26,22 +56,43 @@ function getItemWithStats(item: Item): ItemWithStats {
 
   const sale = saleRaw || undefined;
   const holdingDays = calculateHoldingDays(item.buyDate, sale?.saleDate);
+  const { costs, totalCosts, costsBreakdown } = getItemCosts(item.id);
+  const totalCost = item.buyPrice + totalCosts;
 
   let currentValue: number;
+  let netProfit: number | undefined;
+  let grossMargin: number | undefined;
+
   if (sale) {
-    currentValue = sale.salePrice - (sale.shippingFee || 0);
+    const netIncome = sale.salePrice - (sale.shippingFee || 0);
+    currentValue = netIncome;
+    netProfit = netIncome - totalCost;
+    if (sale.salePrice > 0) {
+      grossMargin = Math.round((netProfit / sale.salePrice) * 100);
+    }
   } else {
     const depreciationRate = 0.002;
-    currentValue = Math.max(0, Math.round(item.buyPrice * (1 - depreciationRate * holdingDays)));
+    currentValue = Math.max(0, Math.round(totalCost * (1 - depreciationRate * holdingDays)));
   }
 
-  return {
+  const result: ItemWithStats = {
     ...item,
     holdingDays,
     currentValue,
-    returnProgress: calculateReturnProgress(item, sale),
+    returnProgress: calculateReturnProgress(item, totalCosts, sale),
+    totalCosts,
+    costsBreakdown,
+    totalCost,
+    grossMargin,
+    netProfit,
     sale,
   };
+
+  if (includeCosts) {
+    result.costs = costs;
+  }
+
+  return result;
 }
 
 export const getItems = (req: Request, res: Response) => {
@@ -65,7 +116,7 @@ export const getItems = (req: Request, res: Response) => {
   sql += ' ORDER BY created_at DESC';
 
   const items = db.prepare(sql).all(...params) as Item[];
-  const itemsWithStats = items.map(getItemWithStats);
+  const itemsWithStats = items.map((i) => getItemWithStats(i, false));
 
   res.json({
     code: 0,
@@ -104,11 +155,13 @@ export const getItemById = (req: Request, res: Response) => {
     FROM sales WHERE item_id = ?
   `).get(id) as Sale | undefined;
 
+  const itemWithStats = getItemWithStats(item, true);
+
   res.json({
     code: 0,
     message: 'success',
     data: {
-      ...getItemWithStats(item),
+      ...itemWithStats,
       usageRecords,
       listings,
       sale,
@@ -141,7 +194,7 @@ export const createItem = (req: Request, res: Response) => {
   res.json({
     code: 0,
     message: '创建成功',
-    data: getItemWithStats(item),
+    data: getItemWithStats(item, false),
   });
 };
 
@@ -187,7 +240,7 @@ export const updateItem = (req: Request, res: Response) => {
   res.json({
     code: 0,
     message: '更新成功',
-    data: getItemWithStats(item),
+    data: getItemWithStats(item, false),
   });
 };
 
@@ -245,5 +298,107 @@ export const addUsageRecord = (req: Request, res: Response) => {
     code: 0,
     message: '添加成功',
     data: record,
+  });
+};
+
+export const getItemCostsList = (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const existing = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
+  if (!existing) {
+    return res.status(404).json({
+      code: 404,
+      message: '物品不存在',
+      data: null,
+    });
+  }
+
+  const { costs, totalCosts, costsBreakdown } = getItemCosts(Number(id));
+
+  res.json({
+    code: 0,
+    message: 'success',
+    data: {
+      costs,
+      totalCosts,
+      costsBreakdown,
+    },
+  });
+};
+
+export const addItemCost = (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { type, amount, note, date } = req.body;
+
+  if (!type || !amount || !date) {
+    return res.status(400).json({
+      code: 400,
+      message: '缺少必要参数',
+      data: null,
+    });
+  }
+
+  if (!COST_TYPES.includes(type)) {
+    return res.status(400).json({
+      code: 400,
+      message: '无效的成本类型',
+      data: null,
+    });
+  }
+
+  const existing = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
+  if (!existing) {
+    return res.status(404).json({
+      code: 404,
+      message: '物品不存在',
+      data: null,
+    });
+  }
+
+  const stmt = db.prepare(`
+    INSERT INTO item_costs (item_id, type, amount, note, date)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  const result = stmt.run(id, type, Number(amount), note || null, date);
+  const cost = db.prepare(`
+    SELECT id, item_id AS itemId, type, amount, note, date, created_at AS createdAt
+    FROM item_costs WHERE id = ?
+  `).get(result.lastInsertRowid) as ItemCost;
+
+  res.json({
+    code: 0,
+    message: '添加成功',
+    data: cost,
+  });
+};
+
+export const deleteItemCost = (req: Request, res: Response) => {
+  const { id, costId } = req.params;
+
+  const existingItem = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
+  if (!existingItem) {
+    return res.status(404).json({
+      code: 404,
+      message: '物品不存在',
+      data: null,
+    });
+  }
+
+  const existing = db.prepare('SELECT * FROM item_costs WHERE id = ? AND item_id = ?').get(costId, id);
+  if (!existing) {
+    return res.status(404).json({
+      code: 404,
+      message: '成本记录不存在',
+      data: null,
+    });
+  }
+
+  db.prepare('DELETE FROM item_costs WHERE id = ? AND item_id = ?').run(costId, id);
+
+  res.json({
+    code: 0,
+    message: '删除成功',
+    data: null,
   });
 };

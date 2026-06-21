@@ -36,6 +36,11 @@ export const api = {
     delete: (id: number) => request(`/items/${id}`, { method: 'DELETE' }),
     addUsage: (id: number, data: { content: string; date: string }) =>
       request(`/items/${id}/usage`, { method: 'POST', body: JSON.stringify(data) }),
+    getCosts: (id: number) => request(`/items/${id}/costs`),
+    addCost: (id: number, data: { type: string; amount: number; note?: string; date: string }) =>
+      request(`/items/${id}/costs`, { method: 'POST', body: JSON.stringify(data) }),
+    deleteCost: (id: number, costId: number) =>
+      request(`/items/${id}/costs/${costId}`, { method: 'DELETE' }),
   },
   listings: {
     getList: (params?: { platform?: string; status?: string; itemId?: number }) => {
