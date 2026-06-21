@@ -4,6 +4,12 @@ export type Platform = 'xianyu' | 'zhuanzhuan' | 'xiaohongshu' | 'pinduoduo' | '
 
 export type ListingStatus = 'active' | 'sold' | 'cancelled';
 
+export type OfferStatus = 'pending' | 'negotiating' | 'accepted' | 'rejected' | 'cancelled';
+
+export type OfferHistoryAction = 'offer' | 'counter' | 'accept' | 'reject' | 'cancel';
+
+export type OfferHistoryActor = 'buyer' | 'seller';
+
 export type CostType = 'shipping' | 'repair' | 'accessory' | 'cleaning' | 'other';
 
 export const COST_TYPE_LABELS: Record<CostType, string> = {
@@ -82,6 +88,68 @@ export interface ListingWithItem extends Listing {
   itemName: string;
   itemImage?: string;
 }
+
+export interface Offer {
+  id: number;
+  listingId: number;
+  itemId: number;
+  buyerName: string;
+  buyerContact?: string;
+  offerPrice: number;
+  currentPrice: number;
+  status: OfferStatus;
+  shippingFee?: number;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OfferWithDetails extends Offer {
+  itemName: string;
+  itemImage?: string;
+  listingPrice: number;
+  platform: Platform;
+  histories?: OfferHistory[];
+}
+
+export interface OfferHistory {
+  id: number;
+  offerId: number;
+  actor: OfferHistoryActor;
+  action: OfferHistoryAction;
+  price?: number;
+  comment?: string;
+  createdAt: string;
+}
+
+export const OFFER_STATUS_LABELS: Record<OfferStatus, string> = {
+  pending: '待处理',
+  negotiating: '议价中',
+  accepted: '已接受',
+  rejected: '已拒绝',
+  cancelled: '已取消',
+};
+
+export const OFFER_STATUS_COLORS: Record<OfferStatus, string> = {
+  pending: 'bg-amber-100 text-amber-700',
+  negotiating: 'bg-blue-100 text-blue-700',
+  accepted: 'bg-emerald-100 text-emerald-700',
+  rejected: 'bg-rose-100 text-rose-700',
+  cancelled: 'bg-slate-100 text-slate-700',
+};
+
+export const OFFER_ACTION_LABELS: Record<OfferHistoryAction, string> = {
+  offer: '发起出价',
+  counter: '还价',
+  accept: '接受',
+  reject: '拒绝',
+  cancel: '取消',
+};
+
+export const OFFER_ACTOR_LABELS: Record<OfferHistoryActor, string> = {
+  buyer: '买家',
+  seller: '卖家',
+};
 
 export interface Sale {
   id: number;

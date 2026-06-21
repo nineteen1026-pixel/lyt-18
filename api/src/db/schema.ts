@@ -63,6 +63,34 @@ export function initSchema() {
       FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS offers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      listing_id INTEGER NOT NULL,
+      item_id INTEGER NOT NULL,
+      buyer_name VARCHAR(100) NOT NULL,
+      buyer_contact VARCHAR(255),
+      offer_price DECIMAL(10,2) NOT NULL,
+      current_price DECIMAL(10,2) NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      shipping_fee DECIMAL(10,2) DEFAULT 0,
+      note TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE,
+      FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS offer_histories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      offer_id INTEGER NOT NULL,
+      actor VARCHAR(20) NOT NULL,
+      action VARCHAR(20) NOT NULL,
+      price DECIMAL(10,2),
+      comment TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (offer_id) REFERENCES offers(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
     CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
     CREATE INDEX IF NOT EXISTS idx_listings_platform ON listings(platform);
@@ -71,5 +99,8 @@ export function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date);
     CREATE INDEX IF NOT EXISTS idx_item_costs_item ON item_costs(item_id);
     CREATE INDEX IF NOT EXISTS idx_item_costs_type ON item_costs(type);
+    CREATE INDEX IF NOT EXISTS idx_offers_listing ON offers(listing_id);
+    CREATE INDEX IF NOT EXISTS idx_offers_status ON offers(status);
+    CREATE INDEX IF NOT EXISTS idx_offer_histories_offer ON offer_histories(offer_id);
   `);
 }

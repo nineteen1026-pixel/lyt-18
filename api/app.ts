@@ -13,6 +13,7 @@ import itemsRouter from './src/routes/items.js'
 import listingsRouter from './src/routes/listings.js'
 import salesRouter from './src/routes/sales.js'
 import statsRouter from './src/routes/stats.js'
+import offersRouter from './src/routes/offers.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -32,6 +33,7 @@ app.use('/api/items', itemsRouter)
 app.use('/api/listings', listingsRouter)
 app.use('/api/sales', salesRouter)
 app.use('/api/stats', statsRouter)
+app.use('/api/offers', offersRouter)
 
 app.use(
   '/api/health',

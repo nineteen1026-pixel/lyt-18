@@ -68,6 +68,27 @@ export const api = {
     create: (data: any) => request('/sales', { method: 'POST', body: JSON.stringify(data) }),
     delete: (id: number) => request(`/sales/${id}`, { method: 'DELETE' }),
   },
+  offers: {
+    getList: (params?: { listingId?: number; itemId?: number; status?: string }) => {
+      const searchParams = new URLSearchParams();
+      if (params?.listingId) searchParams.set('listingId', String(params.listingId));
+      if (params?.itemId) searchParams.set('itemId', String(params.itemId));
+      if (params?.status) searchParams.set('status', params.status);
+      const query = searchParams.toString();
+      return request(`/offers${query ? `?${query}` : ''}`);
+    },
+    getById: (id: number) => request(`/offers/${id}`),
+    create: (data: any) => request('/offers', { method: 'POST', body: JSON.stringify(data) }),
+    counter: (id: number, data: { counterPrice: number; comment?: string }) =>
+      request(`/offers/${id}/counter`, { method: 'POST', body: JSON.stringify(data) }),
+    accept: (id: number, data?: { comment?: string }) =>
+      request(`/offers/${id}/accept`, { method: 'POST', body: JSON.stringify(data || {}) }),
+    reject: (id: number, data?: { comment?: string }) =>
+      request(`/offers/${id}/reject`, { method: 'POST', body: JSON.stringify(data || {}) }),
+    createSale: (id: number, data?: { saleDate?: string; shippingFee?: number; note?: string }) =>
+      request(`/offers/${id}/create-sale`, { method: 'POST', body: JSON.stringify(data || {}) }),
+    delete: (id: number) => request(`/offers/${id}`, { method: 'DELETE' }),
+  },
   stats: {
     getSummary: () => request('/stats/summary'),
     getMonthly: () => request('/stats/monthly'),
