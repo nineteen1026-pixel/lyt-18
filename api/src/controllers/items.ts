@@ -11,17 +11,20 @@ function calculateHoldingDays(buyDate: string, saleDate?: string): number {
 
 function calculateReturnProgress(item: Item, sale?: Sale): number {
   if (!sale) {
-    const depreciationRate = 0.002;
-    const holdingDays = calculateHoldingDays(item.buyDate);
-    const currentValue = Math.max(0, item.buyPrice * (1 - depreciationRate * holdingDays));
-    return Math.min(100, Math.round((currentValue / item.buyPrice) * 100));
+    return 0;
   }
   const netIncome = sale.salePrice - (sale.shippingFee || 0);
   return Math.min(100, Math.round((netIncome / item.buyPrice) * 100));
 }
 
+
 function getItemWithStats(item: Item): ItemWithStats {
-  const sale = db.prepare('SELECT * FROM sales WHERE item_id = ?').get(item.id) as Sale | undefined;
+  const saleRaw = db.prepare(`
+    SELECT id, item_id AS itemId, listing_id AS listingId, platform, sale_price AS salePrice, sale_date AS saleDate, shipping_fee AS shippingFee, buyer_info AS buyerInfo, note, created_at AS createdAt
+    FROM sales WHERE item_id = ?
+  `).get(item.id) as Sale | undefined;
+
+  const sale = saleRaw || undefined;
   const holdingDays = calculateHoldingDays(item.buyDate, sale?.saleDate);
 
   let currentValue: number;
