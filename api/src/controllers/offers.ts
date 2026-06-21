@@ -282,8 +282,12 @@ export const acceptOffer = (req: Request, res: Response) => {
   const { comment } = req.body;
 
   const existing = db.prepare(`
-    SELECT id, status FROM offers WHERE id = ?
-  `).get(id) as Offer | undefined;
+    SELECT o.id, o.status, o.listing_id, o.item_id, l.status as listing_status, i.status as item_status
+    FROM offers o
+    LEFT JOIN listings l ON o.listing_id = l.id
+    LEFT JOIN items i ON o.item_id = i.id
+    WHERE o.id = ?
+  `).get(id) as any;
 
   if (!existing) {
     return res.status(404).json({
@@ -301,6 +305,22 @@ export const acceptOffer = (req: Request, res: Response) => {
     });
   }
 
+  if (existing.listing_status !== 'active') {
+    return res.status(400).json({
+      code: 400,
+      message: '挂售记录不在活跃状态，无法接受出价',
+      data: null,
+    });
+  }
+
+  if (existing.item_status === 'sold') {
+    return res.status(400).json({
+      code: 400,
+      message: '物品已成交，无法接受出价',
+      data: null,
+    });
+  }
+
   const tx = db.transaction(() => {
     db.prepare(`
       UPDATE offers
@@ -312,6 +332,23 @@ export const acceptOffer = (req: Request, res: Response) => {
       INSERT INTO offer_histories (offer_id, actor, action, comment)
       VALUES (?, 'seller', 'accept', ?)
     `).run(id, comment || null);
+
+    db.prepare(`
+      UPDATE offers
+      SET status = 'rejected', updated_at = CURRENT_TIMESTAMP
+      WHERE listing_id = ? AND id != ? AND status IN ('pending', 'negotiating')
+    `).run(existing.listing_id, id);
+
+    const rejectedOfferIds: number[] = db.prepare(`
+      SELECT id FROM offers WHERE listing_id = ? AND id != ? AND status = 'rejected' AND updated_at >= datetime('now', '-1 minute')
+    `).all(existing.listing_id, id).map((r: any) => r.id);
+
+    rejectedOfferIds.forEach((rejectedId: number) => {
+      db.prepare(`
+        INSERT INTO offer_histories (offer_id, actor, action, comment)
+        VALUES (?, 'seller', 'reject', ?)
+      `).run(rejectedId, '同挂售已有出价被接受，自动拒绝');
+    });
   });
 
   tx();
@@ -390,9 +427,10 @@ export const createSaleFromOffer = (req: Request, res: Response) => {
   const { saleDate, shippingFee, note } = req.body;
 
   const offer = db.prepare(`
-    SELECT o.*, l.platform as listing_platform
+    SELECT o.*, l.platform as listing_platform, l.status as listing_status, i.status as item_status
     FROM offers o
     LEFT JOIN listings l ON o.listing_id = l.id
+    LEFT JOIN items i ON o.item_id = i.id
     WHERE o.id = ?
   `).get(id) as any;
 
@@ -420,16 +458,29 @@ export const createSaleFromOffer = (req: Request, res: Response) => {
     });
   }
 
-  const item = db.prepare(`
-    SELECT id FROM items WHERE id = ?
-  `).get(offer.item_id);
-  if (!item) {
-    return res.status(404).json({
-      code: 404,
-      message: '物品不存在',
+  if (offer.listing_status === 'sold') {
+    return res.status(400).json({
+      code: 400,
+      message: '挂售记录已售出，请勿重复生成成交单',
       data: null,
     });
   }
+
+  if (offer.item_status === 'sold') {
+    return res.status(400).json({
+      code: 400,
+      message: '物品已成交，请勿重复生成成交单',
+      data: null,
+    });
+  }
+
+  const otherAcceptedOfferIds: number[] = db.prepare(`
+    SELECT id FROM offers WHERE listing_id = ? AND id != ? AND status = 'accepted'
+  `).all(offer.listing_id, id).map((r: any) => r.id);
+
+  const pendingOfferIds: number[] = db.prepare(`
+    SELECT id FROM offers WHERE listing_id = ? AND id != ? AND status IN ('pending', 'negotiating')
+  `).all(offer.listing_id, id).map((r: any) => r.id);
 
   const finalShippingFee = shippingFee !== undefined ? shippingFee : (offer.shipping_fee || 0);
   const finalSaleDate = saleDate || new Date().toISOString().split('T')[0];
@@ -472,22 +523,37 @@ export const createSaleFromOffer = (req: Request, res: Response) => {
       WHERE id = ?
     `).run(saleId, id);
 
-    db.prepare(`
-      UPDATE offers
-      SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
-      WHERE listing_id = ? AND id != ? AND status IN ('pending', 'negotiating')
-    `).run(offer.listing_id, id);
-
-    const cancelledOfferIds: number[] = db.prepare(`
-      SELECT id FROM offers WHERE listing_id = ? AND id != ? AND status = 'cancelled'
-    `).all(offer.listing_id, id).map((r: any) => r.id);
-
-    cancelledOfferIds.forEach((cancelledId: number) => {
+    if (otherAcceptedOfferIds.length > 0) {
+      const placeholders = otherAcceptedOfferIds.map(() => '?').join(',');
       db.prepare(`
-        INSERT INTO offer_histories (offer_id, actor, action, comment)
-        VALUES (?, 'seller', 'cancel', ?)
-      `).run(cancelledId, '同挂售已生成成交，自动关闭');
-    });
+        UPDATE offers
+        SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+        WHERE id IN (${placeholders})
+      `).run(...otherAcceptedOfferIds);
+
+      otherAcceptedOfferIds.forEach((cancelledId: number) => {
+        db.prepare(`
+          INSERT INTO offer_histories (offer_id, actor, action, comment)
+          VALUES (?, 'seller', 'cancel', ?)
+        `).run(cancelledId, '同挂售已生成成交，自动关闭');
+      });
+    }
+
+    if (pendingOfferIds.length > 0) {
+      const placeholders = pendingOfferIds.map(() => '?').join(',');
+      db.prepare(`
+        UPDATE offers
+        SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+        WHERE id IN (${placeholders})
+      `).run(...pendingOfferIds);
+
+      pendingOfferIds.forEach((cancelledId: number) => {
+        db.prepare(`
+          INSERT INTO offer_histories (offer_id, actor, action, comment)
+          VALUES (?, 'seller', 'cancel', ?)
+        `).run(cancelledId, '同挂售已生成成交，自动关闭');
+      });
+    }
 
     return saleId;
   });
