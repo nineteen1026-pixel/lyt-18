@@ -1,5 +1,14 @@
 import db from './index.js';
 
+function columnExists(tableName: string, columnName: string): boolean {
+  try {
+    const row = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+    return row.some(col => col.name === columnName);
+  } catch {
+    return false;
+  }
+}
+
 export function initSchema() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS items (
@@ -56,12 +65,6 @@ export function initSchema() {
       FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE SET NULL
     );
 
-    -- 为旧数据添加默认值
-    ALTER TABLE sales ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'active';
-    ALTER TABLE sales ADD COLUMN IF NOT EXISTS refund_date DATE;
-    ALTER TABLE sales ADD COLUMN IF NOT EXISTS refund_reason TEXT;
-    ALTER TABLE sales ADD COLUMN IF NOT EXISTS refund_note TEXT;
-
     CREATE TABLE IF NOT EXISTS item_costs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       item_id INTEGER NOT NULL,
@@ -115,4 +118,17 @@ export function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_offers_status ON offers(status);
     CREATE INDEX IF NOT EXISTS idx_offer_histories_offer ON offer_histories(offer_id);
   `);
+
+  if (!columnExists('sales', 'status')) {
+    db.exec("ALTER TABLE sales ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'");
+  }
+  if (!columnExists('sales', 'refund_date')) {
+    db.exec('ALTER TABLE sales ADD COLUMN refund_date DATE');
+  }
+  if (!columnExists('sales', 'refund_reason')) {
+    db.exec('ALTER TABLE sales ADD COLUMN refund_reason TEXT');
+  }
+  if (!columnExists('sales', 'refund_note')) {
+    db.exec('ALTER TABLE sales ADD COLUMN refund_note TEXT');
+  }
 }
