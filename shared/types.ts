@@ -4,6 +4,10 @@ export type Platform = 'xianyu' | 'zhuanzhuan' | 'xiaohongshu' | 'pinduoduo' | '
 
 export type ListingStatus = 'active' | 'sold' | 'cancelled';
 
+export type SaleStatus = 'active' | 'refunded';
+
+export type RefundTargetStatus = 'holding' | 'listing';
+
 export type OfferStatus = 'pending' | 'negotiating' | 'accepted' | 'rejected' | 'cancelled';
 
 export type OfferHistoryAction = 'offer' | 'counter' | 'accept' | 'reject' | 'cancel';
@@ -162,6 +166,10 @@ export interface Sale {
   shippingFee?: number;
   buyerInfo?: string;
   note?: string;
+  status: SaleStatus;
+  refundDate?: string;
+  refundReason?: string;
+  refundNote?: string;
   createdAt: string;
 }
 
@@ -174,6 +182,16 @@ export interface SaleWithItem extends Sale {
   profit: number;
   grossMargin?: number;
 }
+
+export const SALE_STATUS_LABELS: Record<SaleStatus, string> = {
+  active: '已成交',
+  refunded: '已退货',
+};
+
+export const SALE_STATUS_COLORS: Record<SaleStatus, string> = {
+  active: 'bg-emerald-100 text-emerald-700',
+  refunded: 'bg-rose-100 text-rose-700',
+};
 
 export interface StatsSummary {
   totalItems: number;

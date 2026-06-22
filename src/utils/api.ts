@@ -56,16 +56,19 @@ export const api = {
     delete: (id: number) => request(`/listings/${id}`, { method: 'DELETE' }),
   },
   sales: {
-    getList: (params?: { platform?: string; itemId?: number; startDate?: string; endDate?: string }) => {
+    getList: (params?: { platform?: string; itemId?: number; startDate?: string; endDate?: string; status?: string }) => {
       const searchParams = new URLSearchParams();
       if (params?.platform) searchParams.set('platform', params.platform);
       if (params?.itemId) searchParams.set('itemId', String(params.itemId));
       if (params?.startDate) searchParams.set('startDate', params.startDate);
       if (params?.endDate) searchParams.set('endDate', params.endDate);
+      if (params?.status) searchParams.set('status', params.status);
       const query = searchParams.toString();
       return request(`/sales${query ? `?${query}` : ''}`);
     },
     create: (data: any) => request('/sales', { method: 'POST', body: JSON.stringify(data) }),
+    refund: (id: number, data: { refundDate: string; refundReason?: string; refundNote?: string; targetStatus?: string }) =>
+      request(`/sales/${id}/refund`, { method: 'POST', body: JSON.stringify(data) }),
     delete: (id: number) => request(`/sales/${id}`, { method: 'DELETE' }),
   },
   offers: {

@@ -47,10 +47,20 @@ export function initSchema() {
       shipping_fee DECIMAL(10,2) DEFAULT 0,
       buyer_info TEXT,
       note TEXT,
+      status VARCHAR(20) NOT NULL DEFAULT 'active',
+      refund_date DATE,
+      refund_reason TEXT,
+      refund_note TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
       FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE SET NULL
     );
+
+    -- 为旧数据添加默认值
+    ALTER TABLE sales ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'active';
+    ALTER TABLE sales ADD COLUMN IF NOT EXISTS refund_date DATE;
+    ALTER TABLE sales ADD COLUMN IF NOT EXISTS refund_reason TEXT;
+    ALTER TABLE sales ADD COLUMN IF NOT EXISTS refund_note TEXT;
 
     CREATE TABLE IF NOT EXISTS item_costs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

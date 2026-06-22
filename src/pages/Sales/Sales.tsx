@@ -1,16 +1,28 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Search, TrendingUp, TrendingDown, Wallet, Percent } from 'lucide-react';
+import { Plus, Trash2, Search, TrendingUp, TrendingDown, Wallet, Percent, RotateCcw, AlertCircle } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { api } from '../../utils/api';
-import { PLATFORM_LABELS, PLATFORM_COLORS } from '../../../shared/types';
+import { PLATFORM_LABELS, PLATFORM_COLORS, SALE_STATUS_LABELS, SALE_STATUS_COLORS } from '../../../shared/types';
 import { formatCurrency, formatDate, getProfitColor, formatProfit } from '../../utils/format';
 import Modal from '../../components/Modal/Modal';
+
+const REFUND_REASONS = [
+  '商品质量问题',
+  '与描述不符',
+  '买家反悔',
+  '物流损坏',
+  '尺码/规格不合适',
+  '其他原因',
+];
 
 export default function Sales() {
   const { sales, loading, fetchSales, items, listings, fetchItems, fetchListings } = useStore();
   const [platformFilter, setPlatformFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const [refundModalOpen, setRefundModalOpen] = useState(false);
+  const [selectedSale, setSelectedSale] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     itemId: '',
     listingId: '',
@@ -21,14 +33,21 @@ export default function Sales() {
     buyerInfo: '',
     note: '',
   });
+  const [refundForm, setRefundForm] = useState({
+    refundDate: new Date().toISOString().split('T')[0],
+    refundReason: '',
+    refundNote: '',
+    targetStatus: 'holding' as 'holding' | 'listing',
+  });
 
   useEffect(() => {
     fetchSales({
       platform: platformFilter !== 'all' ? platformFilter : undefined,
+      status: statusFilter !== 'all' ? statusFilter : undefined,
     });
     fetchItems();
     fetchListings();
-  }, [fetchSales, fetchItems, fetchListings, platformFilter]);
+  }, [fetchSales, fetchItems, fetchListings, platformFilter, statusFilter]);
 
   const filteredSales = sales.filter((sale) => {
     const searchMatch = searchQuery === '' ||
@@ -37,14 +56,15 @@ export default function Sales() {
     return searchMatch;
   });
 
+  const activeSales = sales.filter(s => s.status === 'active');
   const availableItems = items.filter(i => i.status !== 'sold');
   const availableListings = listings.filter(l => l.status === 'active');
 
-  const totalProfit = sales.reduce((sum, s) => sum + s.profit, 0);
-  const totalIncome = sales.reduce((sum, s) => sum + (s.salePrice - (s.shippingFee || 0)), 0);
-  const totalCosts = sales.reduce((sum, s) => sum + s.totalCost, 0);
-  const avgGrossMargin = sales.length > 0
-    ? Math.round(sales.reduce((sum, s) => sum + (s.grossMargin || 0), 0) / sales.length)
+  const totalProfit = activeSales.reduce((sum, s) => sum + s.profit, 0);
+  const totalIncome = activeSales.reduce((sum, s) => sum + (s.salePrice - (s.shippingFee || 0)), 0);
+  const totalCosts = activeSales.reduce((sum, s) => sum + s.totalCost, 0);
+  const avgGrossMargin = activeSales.length > 0
+    ? Math.round(activeSales.reduce((sum, s) => sum + (s.grossMargin || 0), 0) / activeSales.length)
     : 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -62,6 +82,36 @@ export default function Sales() {
       fetchSales();
     } catch (err) {
       alert((err as Error).message);
+    }
+  };
+
+  const handleOpenRefund = (id: number) => {
+    setSelectedSale(id);
+    setRefundForm({
+      refundDate: new Date().toISOString().split('T')[0],
+      refundReason: '',
+      refundNote: '',
+      targetStatus: 'holding',
+    });
+    setRefundModalOpen(true);
+  };
+
+  const handleRefund = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSale) return;
+    if (confirm('确认退货？该操作将扣除对应收入和利润统计，恢复物品状态。')) {
+      try {
+        await api.sales.refund(selectedSale, {
+          ...refundForm,
+          refundReason: refundForm.refundReason || undefined,
+          refundNote: refundForm.refundNote || undefined,
+        });
+        setRefundModalOpen(false);
+        setSelectedSale(null);
+        fetchSales();
+      } catch (err) {
+        alert((err as Error).message);
+      }
     }
   };
 
@@ -84,12 +134,15 @@ export default function Sales() {
     );
   }
 
+  const selectedSaleData = selectedSale ? sales.find(s => s.id === selectedSale) : null;
+  const hasListing = selectedSaleData?.listingId != null;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">成交记录</h1>
-          <p className="text-slate-500 text-sm">查看和管理所有成交记录，净利润已扣除附加成本</p>
+          <p className="text-slate-500 text-sm">查看和管理所有成交记录，净利润已扣除附加成本；退货记录将从统计中自动扣除</p>
         </div>
         <button onClick={() => setModalOpen(true)} className="btn-primary flex items-center gap-2">
           <Plus className="w-5 h-5" />
@@ -102,7 +155,10 @@ export default function Sales() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-500 font-medium">成交笔数</p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">{sales.length}</p>
+              <p className="text-2xl font-bold text-slate-800 mt-1">{activeSales.length}</p>
+              {sales.length > activeSales.length && (
+                <p className="text-xs text-slate-400 mt-1">含 {sales.length - activeSales.length} 笔已退货</p>
+              )}
             </div>
             <div className="p-3 rounded-xl bg-blue-50">
               <TrendingUp className="w-6 h-6 text-blue-600" />
@@ -169,6 +225,15 @@ export default function Sales() {
             />
           </div>
           <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="input-field w-full sm:w-auto"
+          >
+            <option value="all">全部状态</option>
+            <option value="active">已成交</option>
+            <option value="refunded">已退货</option>
+          </select>
+          <select
             value={platformFilter}
             onChange={(e) => setPlatformFilter(e.target.value)}
             className="input-field w-full sm:w-auto"
@@ -193,12 +258,13 @@ export default function Sales() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">净利润</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">毛利率</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">成交日期</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">状态</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredSales.map((sale) => (
-                <tr key={sale.id} className="hover:bg-slate-50 transition-colors">
+                <tr key={sale.id} className={`hover:bg-slate-50 transition-colors ${sale.status === 'refunded' ? 'bg-rose-50/30' : ''}`}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-lg">
@@ -222,40 +288,68 @@ export default function Sales() {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="font-bold text-primary-600">{formatCurrency(sale.salePrice)}</div>
+                    <div className={`font-bold ${sale.status === 'refunded' ? 'text-slate-400 line-through' : 'text-primary-600'}`}>
+                      {formatCurrency(sale.salePrice)}
+                    </div>
                     {sale.shippingFee ? (
                       <div className="text-xs text-slate-500">含运费 {formatCurrency(sale.shippingFee)}</div>
                     ) : null}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="font-bold text-rose-600">{formatCurrency(sale.totalCost)}</div>
+                    <div className={`font-bold ${sale.status === 'refunded' ? 'text-slate-400' : 'text-rose-600'}`}>
+                      {formatCurrency(sale.totalCost)}
+                    </div>
                     {sale.totalCosts > 0 && (
                       <div className="text-xs text-slate-500">+{formatCurrency(sale.totalCosts)} 附加</div>
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`font-bold ${getProfitColor(sale.profit)}`}>
+                    <span className={`font-bold ${sale.status === 'refunded' ? 'text-slate-400 line-through' : getProfitColor(sale.profit)}`}>
                       {formatProfit(sale.profit)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {sale.grossMargin !== undefined && (
-                      <span className={`font-medium text-sm ${getProfitColor(sale.grossMargin)}`}>
+                      <span className={`font-medium text-sm ${sale.status === 'refunded' ? 'text-slate-400' : getProfitColor(sale.grossMargin)}`}>
                         {sale.grossMargin > 0 ? '+' : ''}{sale.grossMargin}%
                       </span>
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                    {formatDate(sale.saleDate)}
+                    <div>{formatDate(sale.saleDate)}</div>
+                    {sale.status === 'refunded' && sale.refundDate && (
+                      <div className="text-xs text-rose-500 mt-1">退货 {formatDate(sale.refundDate)}</div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${SALE_STATUS_COLORS[sale.status]}`}>
+                      {SALE_STATUS_LABELS[sale.status]}
+                    </span>
+                    {sale.status === 'refunded' && sale.refundReason && (
+                      <div className="text-xs text-slate-500 mt-1 max-w-[120px] truncate" title={sale.refundReason}>
+                        {sale.refundReason}
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <button
-                      onClick={() => handleDelete(sale.id)}
-                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                      title="删除"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="inline-flex items-center gap-1">
+                      {sale.status === 'active' && (
+                        <button
+                          onClick={() => handleOpenRefund(sale.id)}
+                          className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                          title="退货退款"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(sale.id)}
+                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        title="删除"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -484,6 +578,142 @@ export default function Sales() {
             </button>
             <button type="submit" className="btn-primary flex-1">
               确认成交
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={refundModalOpen} onClose={() => { setRefundModalOpen(false); setSelectedSale(null); }} title="退货退款">
+        <form onSubmit={handleRefund} className="space-y-4">
+          <div className="bg-amber-50 rounded-lg p-4 border border-amber-200 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-amber-800 space-y-1">
+              <p className="font-medium">确认退货后：</p>
+              <ul className="list-disc list-inside space-y-0.5 text-amber-700">
+                <li>该订单的收入、利润、成交计数将从统计中扣除</li>
+                <li>关联的物品状态将恢复为您选择的状态</li>
+                <li>退货操作不可撤销，请谨慎操作</li>
+              </ul>
+            </div>
+          </div>
+
+          {selectedSaleData && (
+            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+              <p className="text-sm font-medium text-slate-700 mb-2">订单信息</p>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-slate-500">物品：</span>
+                  <span className="font-medium text-slate-800">{selectedSaleData.itemName}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">平台：</span>
+                  <span className="font-medium text-slate-800">{PLATFORM_LABELS[selectedSaleData.platform]}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">成交价：</span>
+                  <span className="font-bold text-primary-600">{formatCurrency(selectedSaleData.salePrice)}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">净利润：</span>
+                  <span className={`font-bold ${getProfitColor(selectedSaleData.profit)}`}>
+                    {formatProfit(selectedSaleData.profit)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">退货日期</label>
+            <input
+              type="date"
+              value={refundForm.refundDate}
+              onChange={(e) => setRefundForm({ ...refundForm, refundDate: e.target.value })}
+              className="input-field"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">退货原因</label>
+            <select
+              value={refundForm.refundReason}
+              onChange={(e) => setRefundForm({ ...refundForm, refundReason: e.target.value })}
+              className="input-field"
+            >
+              <option value="">请选择原因（可选）</option>
+              {REFUND_REASONS.map((reason) => (
+                <option key={reason} value={reason}>{reason}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">恢复物品状态至</label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
+                refundForm.targetStatus === 'holding'
+                  ? 'border-primary-500 bg-primary-50'
+                  : 'border-slate-200 hover:border-slate-300'
+              }`}>
+                <input
+                  type="radio"
+                  name="targetStatus"
+                  value="holding"
+                  checked={refundForm.targetStatus === 'holding'}
+                  onChange={(e) => setRefundForm({ ...refundForm, targetStatus: e.target.value as 'holding' | 'listing' })}
+                  className="w-4 h-4 text-primary-600"
+                />
+                <div>
+                  <div className="font-medium text-slate-800">持有中</div>
+                  <div className="text-xs text-slate-500">物品暂不出售，留作自用</div>
+                </div>
+              </label>
+              <label className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
+                refundForm.targetStatus === 'listing'
+                  ? 'border-primary-500 bg-primary-50'
+                  : 'border-slate-200 hover:border-slate-300'
+              } ${!hasListing ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <input
+                  type="radio"
+                  name="targetStatus"
+                  value="listing"
+                  checked={refundForm.targetStatus === 'listing'}
+                  onChange={(e) => hasListing && setRefundForm({ ...refundForm, targetStatus: e.target.value as 'holding' | 'listing' })}
+                  disabled={!hasListing}
+                  className="w-4 h-4 text-primary-600"
+                />
+                <div>
+                  <div className="font-medium text-slate-800">挂售中</div>
+                  <div className="text-xs text-slate-500">
+                    {hasListing ? '恢复原挂售链接继续出售' : '该订单未关联挂售，无法选择'}
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">退货备注</label>
+            <textarea
+              value={refundForm.refundNote}
+              onChange={(e) => setRefundForm({ ...refundForm, refundNote: e.target.value })}
+              className="input-field min-h-[60px]"
+              placeholder="退货过程中的特殊情况、协商结果等..."
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => { setRefundModalOpen(false); setSelectedSale(null); }}
+              className="btn-secondary flex-1"
+            >
+              取消
+            </button>
+            <button type="submit" className="btn-danger flex-1 flex items-center justify-center gap-2">
+              <RotateCcw className="w-4 h-4" />
+              确认退货
             </button>
           </div>
         </form>

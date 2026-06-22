@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import db from '../db/index.js';
-import type { Sale, SaleWithItem } from '../../../shared/types.js';
+import type { Sale, SaleWithItem, RefundTargetStatus } from '../../../shared/types.js';
 
 function getItemCostsSummary(itemId: number): { totalCosts: number } {
   const costRows = db.prepare(`
@@ -30,6 +30,10 @@ function buildSaleWithItem(s: any): SaleWithItem {
     shippingFee,
     buyerInfo: s.buyer_info,
     note: s.note,
+    status: s.status || 'active',
+    refundDate: s.refund_date,
+    refundReason: s.refund_reason,
+    refundNote: s.refund_note,
     createdAt: s.created_at,
     itemName: s.item_name,
     itemImage: s.item_image,
@@ -42,7 +46,7 @@ function buildSaleWithItem(s: any): SaleWithItem {
 }
 
 export const getSales = (req: Request, res: Response) => {
-  const { platform, itemId, startDate, endDate } = req.query;
+  const { platform, itemId, startDate, endDate, status } = req.query;
 
   let sql = `
     SELECT s.*, i.name as item_name, i.image as item_image, i.buy_price as buy_price
@@ -67,6 +71,10 @@ export const getSales = (req: Request, res: Response) => {
   if (endDate) {
     sql += ' AND s.sale_date <= ?';
     params.push(endDate);
+  }
+  if (status && status !== 'all') {
+    sql += ' AND s.status = ?';
+    params.push(status);
   }
   sql += ' ORDER BY s.sale_date DESC';
 
@@ -105,8 +113,8 @@ export const createSale = (req: Request, res: Response) => {
 
   const tx = db.transaction(() => {
     const stmt = db.prepare(`
-      INSERT INTO sales (item_id, listing_id, platform, sale_price, sale_date, shipping_fee, buyer_info, note)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO sales (item_id, listing_id, platform, sale_price, sale_date, shipping_fee, buyer_info, note, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
     `);
 
     const result = stmt.run(
@@ -145,11 +153,83 @@ export const createSale = (req: Request, res: Response) => {
   });
 };
 
+export const refundSale = (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { refundDate, refundReason, refundNote, targetStatus } = req.body;
+
+  if (!refundDate) {
+    return res.status(400).json({
+      code: 400,
+      message: '缺少退货日期',
+      data: null,
+    });
+  }
+
+  const existing = db.prepare(`
+    SELECT id, item_id AS itemId, listing_id AS listingId, status
+    FROM sales WHERE id = ?
+  `).get(id) as { id: number; itemId: number; listingId?: number; status: string } | undefined;
+
+  if (!existing) {
+    return res.status(404).json({
+      code: 404,
+      message: '成交记录不存在',
+      data: null,
+    });
+  }
+
+  if (existing.status === 'refunded') {
+    return res.status(400).json({
+      code: 400,
+      message: '该订单已退货',
+      data: null,
+    });
+  }
+
+  const itemId = existing.itemId;
+  const listingId = existing.listingId;
+
+  const finalTargetStatus: RefundTargetStatus = (targetStatus === 'listing' || targetStatus === 'holding') ? targetStatus : 'holding';
+
+  const tx = db.transaction(() => {
+    db.prepare(`
+      UPDATE sales
+      SET status = 'refunded', refund_date = ?, refund_reason = ?, refund_note = ?
+      WHERE id = ?
+    `).run(refundDate, refundReason || null, refundNote || null, id);
+
+    if (finalTargetStatus === 'listing' && listingId) {
+      db.prepare("UPDATE listings SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(listingId);
+      db.prepare("UPDATE items SET status = 'listing', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(itemId);
+    } else {
+      if (listingId) {
+        db.prepare("UPDATE listings SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(listingId);
+      }
+      db.prepare("UPDATE items SET status = 'holding', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(itemId);
+    }
+  });
+
+  tx();
+
+  const sale = db.prepare(`
+    SELECT s.*, i.name as item_name, i.image as item_image, i.buy_price as buy_price
+    FROM sales s
+    LEFT JOIN items i ON s.item_id = i.id
+    WHERE s.id = ?
+  `).get(id) as any;
+
+  res.json({
+    code: 0,
+    message: '退货成功',
+    data: buildSaleWithItem(sale),
+  });
+};
+
 export const deleteSale = (req: Request, res: Response) => {
   const { id } = req.params;
 
   const existing = db.prepare(`
-    SELECT id, item_id AS itemId, listing_id AS listingId, platform, sale_price AS salePrice, sale_date AS saleDate, shipping_fee AS shippingFee, buyer_info AS buyerInfo, note, created_at AS createdAt
+    SELECT id, item_id AS itemId, listing_id AS listingId, platform, sale_price AS salePrice, sale_date AS saleDate, shipping_fee AS shippingFee, buyer_info AS buyerInfo, note, created_at AS createdAt, status
     FROM sales WHERE id = ?
   `).get(id) as Sale | undefined;
 

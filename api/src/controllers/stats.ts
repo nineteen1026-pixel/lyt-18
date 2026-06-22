@@ -8,7 +8,7 @@ export const getSummary = (req: Request, res: Response) => {
   const listingItems = (db.prepare("SELECT COUNT(*) as count FROM items WHERE status = 'listing'").get() as { count: number }).count;
   const soldItems = (db.prepare("SELECT COUNT(*) as count FROM items WHERE status = 'sold'").get() as { count: number }).count;
 
-  const totalIncome = (db.prepare('SELECT COALESCE(SUM(sale_price - COALESCE(shipping_fee, 0)), 0) as total FROM sales').get() as { total: number }).total;
+  const totalIncome = (db.prepare("SELECT COALESCE(SUM(sale_price - COALESCE(shipping_fee, 0)), 0) as total FROM sales WHERE status = 'active'").get() as { total: number }).total;
   const totalExpense = (db.prepare('SELECT COALESCE(SUM(buy_price), 0) as total FROM items').get() as { total: number }).total;
   const soldExpense = (db.prepare("SELECT COALESCE(SUM(buy_price), 0) as total FROM items WHERE status = 'sold'").get() as { total: number }).total;
 
@@ -28,7 +28,7 @@ export const getSummary = (req: Request, res: Response) => {
     SELECT i.buy_date, s.sale_date
     FROM items i
     JOIN sales s ON i.id = s.item_id
-    WHERE i.status = 'sold'
+    WHERE i.status = 'sold' AND s.status = 'active'
   `).all() as { buy_date: string; sale_date: string }[];
 
   let avgHoldingDays = 0;
@@ -52,7 +52,7 @@ export const getSummary = (req: Request, res: Response) => {
       FROM item_costs
       GROUP BY item_id
     ) c ON i.id = c.item_id
-    WHERE i.status = 'sold' AND s.sale_price > 0
+    WHERE i.status = 'sold' AND s.status = 'active' AND s.sale_price > 0
   `).all() as { profit: number; salePrice: number }[];
 
   let avgGrossMargin = 0;
@@ -91,6 +91,7 @@ export const getMonthlyData = (req: Request, res: Response) => {
       strftime('%Y-%m', sale_date) as month,
       SUM(sale_price - COALESCE(shipping_fee, 0)) as income
     FROM sales
+    WHERE status = 'active'
     GROUP BY strftime('%Y-%m', sale_date)
     ORDER BY month
   `).all() as { month: string; income: number }[];
@@ -153,6 +154,7 @@ export const getPlatformData = (req: Request, res: Response) => {
       COUNT(*) as count,
       SUM(s.sale_price - COALESCE(s.shipping_fee, 0)) as amount
     FROM sales s
+    WHERE s.status = 'active'
     GROUP BY s.platform
     ORDER BY amount DESC
   `).all() as PlatformData[];
@@ -182,7 +184,7 @@ export const getCategoryData = (req: Request, res: Response) => {
       FROM item_costs
       GROUP BY item_id
     ) c ON i.id = c.item_id
-    WHERE i.status = 'sold'
+    WHERE i.status = 'sold' AND s.status = 'active'
     GROUP BY i.category
     ORDER BY profit DESC
   `).all() as CategoryData[];

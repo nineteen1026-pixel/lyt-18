@@ -23,7 +23,7 @@ interface AppState {
   error: string | null;
   fetchItems: (params?: { status?: string; category?: string; search?: string }) => Promise<void>;
   fetchListings: (params?: { platform?: string; status?: string; itemId?: number }) => Promise<void>;
-  fetchSales: (params?: { platform?: string; itemId?: number; startDate?: string; endDate?: string }) => Promise<void>;
+  fetchSales: (params?: { platform?: string; itemId?: number; startDate?: string; endDate?: string; status?: string }) => Promise<void>;
   fetchOffers: (params?: { listingId?: number; itemId?: number; status?: string }) => Promise<void>;
   fetchStats: () => Promise<void>;
   fetchAll: () => Promise<void>;
